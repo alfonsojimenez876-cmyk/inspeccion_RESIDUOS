@@ -10,10 +10,17 @@
 
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Segoe UI", Roboto, sans-serif; }
-    body { height: 100vh; overflow: hidden; background: #1a3a3a; }
-    .app { display: flex; height: 100%; width: 100%; }
-    .map-container { flex: 1; position: relative; min-width: 0; }
-    #map { height: 100%; width: 100%; background: #1a3a3a; }
+    html, body { height: 100%; width: 100%; overflow: hidden; background: #1a3a3a; }
+    .app { display: flex; height: 100vh; width: 100%; }
+    .map-container { flex: 1; position: relative; min-width: 0; height: 100%; }
+    #map {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      height: 100% !important;
+      width: 100% !important;
+      background: #1a3a3a;
+      z-index: 1;
+    }
 
     .leaflet-marker-icon { background: transparent !important; border: none !important; }
 
@@ -131,16 +138,11 @@
       margin-top: 6px;
     }
 
-    .pie-chart-container {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
+    .pie-chart-container { display: flex; align-items: center; gap: 14px; }
 
     .pie-chart-wrapper {
       position: relative;
-      width: 78px;
-      height: 78px;
+      width: 78px; height: 78px;
       flex-shrink: 0;
       perspective: 320px;
       perspective-origin: 50% 40%;
@@ -149,10 +151,8 @@
     .pie-chart-wrapper::after {
       content: "";
       position: absolute;
-      left: 50%;
-      bottom: -6px;
-      width: 62px;
-      height: 10px;
+      left: 50%; bottom: -6px;
+      width: 62px; height: 10px;
       transform: translateX(-50%);
       background: radial-gradient(ellipse at center,
                   rgba(0,0,0,0.55) 0%,
@@ -164,21 +164,17 @@
     }
 
     .pie-chart {
-      position: absolute;
-      inset: 0;
+      position: absolute; inset: 0;
       border-radius: 50%;
       transform-style: preserve-3d;
       transform: rotateX(55deg);
-      box-shadow:
-        0 0 10px rgba(0,0,0,0.6),
-        inset 0 0 6px rgba(255,255,255,0.12);
+      box-shadow: 0 0 10px rgba(0,0,0,0.6), inset 0 0 6px rgba(255,255,255,0.12);
       z-index: 1;
     }
 
     .pie-chart::before {
       content: "";
-      position: absolute;
-      inset: 0;
+      position: absolute; inset: 0;
       border-radius: 50%;
       background:
         radial-gradient(circle at 35% 25%,
@@ -199,9 +195,7 @@
       width: 34px; height: 34px;
       border-radius: 50%;
       background: radial-gradient(circle at 40% 35%,
-                  #1a2a32 0%,
-                  #0d161d 70%,
-                  #05090c 100%);
+                  #1a2a32 0%, #0d161d 70%, #05090c 100%);
       box-shadow:
         inset 0 3px 6px rgba(0,0,0,0.9),
         inset 0 -2px 4px rgba(255,255,255,0.06),
@@ -856,7 +850,10 @@
     const GRAPHHOPPER_URL = "https://graphhopper.com/api/1/route";
 
     const DETECTION_RADIUS_METERS = 300;
-    const ROUTE_CACHE_KEY = "inspeccion_residuos_route_v23_graphhopper_avoid_motorway";
+    const ROUTE_CACHE_KEY = "inspeccion_residuos_route_v24_graphhopper_bloques5";
+
+    // Límite de puntos por petición en plan gratuito de GraphHopper
+    const GRAPHHOPPER_MAX_POINTS_PER_REQUEST = 5;
 
     const SPEED_MIN_CRUISE = 60;
     const SPEED_MAX_HIGHWAY = 110;
@@ -1563,6 +1560,12 @@
       L.control.scale({ position: 'bottomleft', metric: true, imperial: false, maxWidth: 130 }).addTo(map);
       map.attributionControl.setPosition('bottomright');
 
+      // Forzar recálculo del tamaño del contenedor (importante en GitHub Pages)
+      setTimeout(() => { try { map.invalidateSize(); } catch(e){} }, 100);
+      setTimeout(() => { try { map.invalidateSize(); } catch(e){} }, 500);
+      setTimeout(() => { try { map.invalidateSize(); } catch(e){} }, 1500);
+      window.addEventListener('resize', () => { try { map.invalidateSize(); } catch(e){} });
+
       drawMapElements();
       renderPointsList();
       updateGlobalProgress();
@@ -1744,8 +1747,44 @@
     }
 
     /* ============================================================
-       CÁLCULO DE RUTA CON GRAPHHOPPER (evitando autopistas)
+       CÁLCULO DE RUTA CON GRAPHHOPPER (BLOQUES DE 5 PUNTOS)
        ============================================================ */
+    // Llama a GraphHopper para un bloque de puntos (máximo 5)
+    async function fetchGraphHopperBlock(pointsArray) {
+      const requestBody = {
+        points: pointsArray,
+        profile: "car",
+        locale: "es",
+        instructions: false,
+        calc_points: true,
+        points_encoded: false,
+        custom_model: {
+          priority: [
+            { if: "road_class == MOTORWAY", multiply_by: "0" }
+          ]
+        },
+        "ch.disable": true
+      };
+
+      const res = await fetch(`${GRAPHHOPPER_URL}?key=${GRAPHHOPPER_API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`HTTP ${res.status}: ${errText.substring(0, 200)}`);
+      }
+
+      const data = await res.json();
+
+      if (data.paths && data.paths[0] && data.paths[0].points && data.paths[0].points.coordinates) {
+        return data.paths[0].points.coordinates.map(c => L.latLng(c[1], c[0]));
+      }
+      throw new Error('Respuesta sin coordenadas válidas');
+    }
+
     async function calculateFullRoute() {
       setStateText('Calculando trayecto con GraphHopper (evitando AP-7)...');
       let fullCoords = null;
@@ -1760,55 +1799,73 @@
       } catch (e) {}
 
       if (!fullCoords) {
-        // Construir petición GraphHopper
-        const pointsArray = INSPECTIONPOINTS.map(p => [p.lng, p.lat]);
+        const allCoords = [];
+        let okCount = 0, failCount = 0;
 
-        const requestBody = {
-          points: pointsArray,
-          profile: "car",
-          locale: "es",
-          instructions: false,
-          calc_points: true,
-          points_encoded: false,
-          custom_model: {
-            priority: [
-              { if: "road_class == MOTORWAY", multiply_by: "0" }
-            ]
-          },
-          ch.disable: true
-        };
+        const waypoints = INSPECTIONPOINTS.map(p => ({ lat: p.lat, lng: p.lng }));
+        const total = waypoints.length;
+
+        // Dividir en bloques de 5 puntos máximo (4 nuevos + 1 repetido al final del bloque anterior)
+        const bloques = [];
+        for (let i = 0; i < total; i += (GRAPHHOPPER_MAX_POINTS_PER_REQUEST - 1)) {
+          const bloque = waypoints.slice(i, i + GRAPHHOPPER_MAX_POINTS_PER_REQUEST);
+          if (bloque.length >= 2) bloques.push(bloque);
+          if (i + GRAPHHOPPER_MAX_POINTS_PER_REQUEST >= total) break;
+        }
+
+        setStateText(`Calculando ruta en ${bloques.length} tramos...`);
+
+        for (let bIdx = 0; bIdx < bloques.length; bIdx++) {
+          const bloque = bloques[bIdx];
+          const pointsArray = bloque.map(p => [p.lng, p.lat]);
+
+          let segCoords = null;
+          try {
+            segCoords = await fetchGraphHopperBlock(pointsArray);
+            okCount++;
+          } catch (err) {
+            console.warn(`Bloque ${bIdx + 1} falló:`, err);
+            segCoords = null;
+          }
+
+          if (segCoords && segCoords.length > 0) {
+            if (allCoords.length === 0) {
+              allCoords.push(...segCoords);
+            } else {
+              allCoords.push(...segCoords.slice(1)); // Evitar duplicar punto de unión
+            }
+          } else {
+            // Fallback SOLO para este bloque: línea recta entre los extremos del bloque
+            const a = bloque[0];
+            const b = bloque[bloque.length - 1];
+            const distAB = L.latLng(a.lat, a.lng).distanceTo(L.latLng(b.lat, b.lng));
+            const parts = Math.max(2, Math.min(60, Math.round(distAB / INTERPOLATION_MAX_SEGMENT_M)));
+            for (let k = 0; k <= parts; k++) {
+              const t = k / parts;
+              allCoords.push(L.latLng(a.lat + (b.lat - a.lat) * t, a.lng + (b.lng - a.lng) * t));
+            }
+            failCount++;
+          }
+
+          // Pequeña pausa entre peticiones para respetar la API
+          await new Promise(r => setTimeout(r, 150));
+        }
+
+        fullCoords = allCoords;
 
         try {
-          const res = await fetch(`${GRAPHHOPPER_URL}?key=${GRAPHHOPPER_API_KEY}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody)
-          });
+          localStorage.setItem(ROUTE_CACHE_KEY, JSON.stringify(fullCoords.map(c => [c.lat, c.lng])));
+        } catch (e) {}
 
-          if (!res.ok) {
-            const errText = await res.text();
-            throw new Error(`HTTP ${res.status}: ${errText.substring(0, 200)}`);
-          }
-
-          const data = await res.json();
-
-          if (data.paths && data.paths[0] && data.paths[0].points && data.paths[0].points.coordinates) {
-            fullCoords = data.paths[0].points.coordinates.map(c => L.latLng(c[1], c[0]));
-            showToast(`Ruta calculada con GraphHopper evitando autopistas.`, 'success', 4000);
-            try {
-              localStorage.setItem(ROUTE_CACHE_KEY, JSON.stringify(fullCoords.map(c => [c.lat, c.lng])));
-            } catch (e) {}
-          } else {
-            throw new Error('Respuesta sin coordenadas válidas');
-          }
-        } catch (e) {
-          console.error('GraphHopper falló:', e);
-          showToast(`Error GraphHopper: ${e.message}. Usando conexión directa.`, 'error', 6000);
-          fullCoords = INSPECTIONPOINTS.map(g => L.latLng(g.lat, g.lng));
+        if (failCount > 0) {
+          showToast(`Ruta calculada (${okCount} tramos por vía, ${failCount} en línea recta).`, 'info', 6000);
+        } else {
+          showToast(`Ruta calculada con GraphHopper evitando autopistas (${okCount} tramos).`, 'success', 4000);
         }
       }
 
       if (!fullCoords) {
+        showToast('Usando conexión directa entre zonas.', 'info', 4000);
         fullCoords = INSPECTIONPOINTS.map(g => L.latLng(g.lat, g.lng));
       }
 
@@ -2072,7 +2129,7 @@
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
     <name>Inspección de Residuos - Comarca</name>
-    <Style id="dumpStyle"><IconStyle><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href></Icon></IconStyle></Style>`;
+    <Style id="dumpStyle"><IconStyle><scale>1.1</scale><Icon href="http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png"/></IconStyle></Style>`;
       INSPECTIONPOINTS.forEach((group, idx) => {
         const randomImg = SAMPLE_IMAGES[idx % SAMPLE_IMAGES.length];
         const wasteListHtml = group.wastes.map(w => `<li><b>${w.type}:</b> ${w.volume.toFixed(1)} m³</li>`).join('');
