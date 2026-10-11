@@ -1,0 +1,2138 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Inspección de Residuos · Benahavís-Estepona-Casares-Manilva</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Segoe UI", Roboto, sans-serif; }
+    body { height: 100vh; overflow: hidden; background: #1a3a3a; }
+    .app { display: flex; height: 100%; width: 100%; }
+    .map-container { flex: 1; position: relative; min-width: 0; }
+    #map { height: 100%; width: 100%; background: #1a3a3a; }
+
+    .leaflet-marker-icon { background: transparent !important; border: none !important; }
+
+    .info-panel {
+      width: 340px;
+      background: rgba(0, 0, 0, 0.96);
+      backdrop-filter: blur(12px);
+      border-left: 3px solid #2ecc71;
+      display: flex;
+      flex-direction: column;
+      color: #ecf0f1;
+      z-index: 1000;
+      box-shadow: -5px 0 20px rgba(0, 0, 0, .4);
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .panel-header { padding: 8px 14px 6px; border-bottom: 1px solid #2ecc7144; flex-shrink: 0; }
+    .panel-header h2 { font-size: .9rem; display: flex; align-items: center; gap: 6px; color: #2ecc71; }
+    .panel-header p { font-size: .6rem; opacity: .7; margin-top: 2px; color: #bdc3c7; }
+    .panel-logo { max-width: 100%; height: auto; max-height: 60px; display: block; margin: 0 auto 4px; }
+
+    .exec-summary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+      margin: 6px 10px 0;
+      padding: 6px;
+      background: #0a1218;
+      border-radius: 10px;
+      border: 1px solid rgba(46,204,113,0.25);
+      flex-shrink: 0;
+    }
+    .exec-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 3px 2px;
+      border-right: 1px solid rgba(46,204,113,0.15);
+    }
+    .exec-item:last-child { border-right: none; }
+    .exec-label {
+      font-size: 0.5rem;
+      color: #95a5a6;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      text-align: center;
+      line-height: 1.1;
+    }
+    .exec-value {
+      font-size: 0.85rem;
+      font-weight: 700;
+      font-family: monospace;
+      margin-top: 1px;
+    }
+    .exec-value.green { color: #2ecc71; }
+    .exec-value.orange { color: #f39c12; }
+    .exec-value.red { color: #e74c3c; }
+    .exec-value.blue { color: #3498db; }
+
+    .global-progress {
+      margin: 6px 10px 0;
+      background: #0a1218;
+      border-radius: 20px;
+      padding: 5px 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: .65rem;
+      border: 1px solid rgba(46,204,113,0.25);
+    }
+    .global-progress .label { color: #bdc3c7; }
+    .global-progress .value { color: #2ecc71; font-weight: 700; font-family: monospace; }
+    .global-progress-bar {
+      height: 3px;
+      background: #1a2a32;
+      border-radius: 3px;
+      margin: 4px 10px 0;
+      overflow: hidden;
+    }
+    .global-progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #2ecc71, #f1c40f);
+      transition: width .4s ease;
+    }
+
+    .point-card {
+      background: #111a20;
+      margin: 8px 10px;
+      padding: 10px;
+      border-radius: 12px;
+      border-left: 4px solid #f39c12;
+      flex-shrink: 0;
+      transition: border-color 0.3s ease, background 0.3s ease;
+    }
+    .point-card.danger-alert {
+      border-left-color: #e74c3c !important;
+      background: #2a1113 !important;
+      animation: alertPulse 1s infinite alternate;
+    }
+    @keyframes alertPulse {
+      from { box-shadow: 0 0 5px rgba(231, 76, 60, 0.2); }
+      to { box-shadow: 0 0 15px rgba(231, 76, 60, 0.8); }
+    }
+
+    .point-name { font-size: .85rem; font-weight: bold; color: #f1c40f; margin-bottom: 3px; }
+
+    .waste-detail {
+      flex: 1;
+      font-size: .65rem;
+      background: rgba(10, 18, 24, 0.85);
+      border: 1px solid rgba(46, 204, 113, 0.2);
+      border-radius: 10px;
+      padding: 8px;
+      margin-top: 6px;
+    }
+
+    .pie-chart-container {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .pie-chart-wrapper {
+      position: relative;
+      width: 78px;
+      height: 78px;
+      flex-shrink: 0;
+      perspective: 320px;
+      perspective-origin: 50% 40%;
+    }
+
+    .pie-chart-wrapper::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: -6px;
+      width: 62px;
+      height: 10px;
+      transform: translateX(-50%);
+      background: radial-gradient(ellipse at center,
+                  rgba(0,0,0,0.55) 0%,
+                  rgba(0,0,0,0.25) 45%,
+                  rgba(0,0,0,0) 75%);
+      filter: blur(2px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .pie-chart {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      transform-style: preserve-3d;
+      transform: rotateX(55deg);
+      box-shadow:
+        0 0 10px rgba(0,0,0,0.6),
+        inset 0 0 6px rgba(255,255,255,0.12);
+      z-index: 1;
+    }
+
+    .pie-chart::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 35% 25%,
+           rgba(255,255,255,0.35) 0%,
+           rgba(255,255,255,0.08) 35%,
+           rgba(255,255,255,0) 60%),
+        radial-gradient(circle at 50% 50%,
+           rgba(0,0,0,0.28) 0%,
+           rgba(0,0,0,0) 55%);
+      pointer-events: none;
+    }
+
+    .pie-chart::after {
+      content: "";
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 34px; height: 34px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 40% 35%,
+                  #1a2a32 0%,
+                  #0d161d 70%,
+                  #05090c 100%);
+      box-shadow:
+        inset 0 3px 6px rgba(0,0,0,0.9),
+        inset 0 -2px 4px rgba(255,255,255,0.06),
+        0 0 4px rgba(0,0,0,0.6);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .pie-legend {
+      flex: 1;
+      font-size: 0.62rem;
+      max-height: 90px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .pie-legend::-webkit-scrollbar { width: 3px; }
+    .pie-legend::-webkit-scrollbar-track { background: #0a1218; border-radius: 3px; }
+    .pie-legend::-webkit-scrollbar-thumb { background: #2ecc71; border-radius: 3px; }
+
+    .waste-detail-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 4px;
+      border-radius: 4px;
+      background: rgba(255,255,255,0.03);
+    }
+    .waste-detail-item:hover { background: rgba(46, 204, 113, 0.1); }
+    .waste-color-dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      margin-right: 5px;
+      box-shadow: 0 0 4px rgba(0,0,0,0.5);
+      flex-shrink: 0;
+    }
+    .waste-name {
+      display: flex; align-items: center;
+      color: #e0e6ed;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .waste-value {
+      font-weight: 700; color: #f39c12;
+      white-space: nowrap; font-family: monospace; font-size: 0.65rem;
+    }
+    .total-vol {
+      text-align: right; font-size: .6rem; color: #2ecc71;
+      margin-top: 6px; font-weight: 600;
+      border-top: 1px dashed rgba(46, 204, 113, 0.25);
+      padding-top: 4px;
+    }
+    .danger-badge-icon { color: #e74c3c; margin-left: 3px; animation: blink 1.2s infinite; }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+    .accumulated-box {
+      background: #0a1218;
+      border-radius: 12px;
+      padding: 4px 10px;
+      margin-top: 5px;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+    .accumulated-label { font-size: .6rem; color: #bdc3c7; }
+    .accumulated-value { font-size: 1rem; font-weight: bold; color: #2ecc71; }
+    .distance-value { font-size: 1rem; font-weight: bold; color: #3498db; }
+
+    .stop-timer {
+      margin-top: 5px;
+      background: #0a1218;
+      border-radius: 20px;
+      padding: 4px 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .countdown-number { font-size: 1rem; font-weight: bold; font-family: monospace; color: #e67e22; }
+    .progress-bar { height: 3px; background: #1a2a32; border-radius: 3px; margin-top: 4px; overflow: hidden; }
+    .progress-fill { width: 0%; height: 100%; background: #2ecc71; transition: width .2s linear; }
+    .state-text { color: #2ecc71; font-size: .65rem; margin-top: 3px; text-align: center; }
+
+    .points-list { margin: 4px 10px 2px; flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+    .points-list h3 { font-size: .65rem; margin-bottom: 4px; color: #95a5a6; flex-shrink: 0; }
+    #pointsListContainer { flex: 1; overflow-y: auto; padding-right: 3px; }
+    #pointsListContainer::-webkit-scrollbar { width: 3px; }
+    #pointsListContainer::-webkit-scrollbar-track { background: #0a1218; border-radius: 3px; }
+    #pointsListContainer::-webkit-scrollbar-thumb { background: #2ecc71; border-radius: 3px; }
+    .point-item {
+      background: #111a20;
+      border-radius: 8px;
+      padding: 4px 8px;
+      margin-bottom: 3px;
+      cursor: pointer;
+      transition: .2s;
+      border-left: 2px solid transparent;
+    }
+    .point-item:hover { background: #16232b; }
+    .point-item.visited { opacity: .5; background: #0a1218; border-left-color: #7f8c8d; }
+    .point-name-list { font-weight: 600; display: flex; justify-content: space-between; gap: 6px; font-size: .7rem; }
+    .point-total { font-size: .6rem; color: #f39c12; white-space: nowrap; }
+    .point-sub { font-size: .55rem; color: #7f8c8d; }
+
+    .top-bar {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      display: inline-flex;
+      flex-wrap: nowrap;
+      gap: 4px;
+      align-items: center;
+      background: rgba(0, 0, 0, .85);
+      backdrop-filter: blur(8px);
+      padding: 4px 8px;
+      border-radius: 30px;
+      border: 1px solid rgba(46, 204, 113, 0.3);
+      justify-content: center;
+      width: auto;
+      max-width: calc(100% - 20px);
+      white-space: nowrap;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .top-bar::-webkit-scrollbar { display: none; }
+
+    .btn {
+      border: none;
+      padding: 4px 8px;
+      border-radius: 20px;
+      font-weight: bold;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: .6rem;
+      transition: .2s;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-primary { background: #27ae60; color: white; }
+    .btn-secondary { background: #2c3e50; color: white; }
+    .btn-danger { background: #c0392b; color: white; }
+    .btn-warning { background: #e67e22; color: white; }
+    .btn-action { background: #16a085; color: white; }
+
+    .tool-select {
+      background: #111a20;
+      border: 1px solid #2ecc71;
+      color: #ecf0f1;
+      padding: 2px 6px;
+      border-radius: 15px;
+      font-size: .6rem;
+      cursor: pointer;
+      outline: none;
+      flex-shrink: 0;
+      max-width: 130px;
+    }
+
+    .speedometer-container {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(10, 20, 26, 0.92);
+      backdrop-filter: blur(12px);
+      border-radius: 16px;
+      padding: 10px;
+      width: 170px;
+      z-index: 1000;
+      border: 1px solid #2ecc71;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .speedometer-title {
+      font-size: 0.6rem;
+      color: #2ecc71;
+      font-weight: bold;
+      margin-bottom: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .gauge-svg { width: 150px; height: 95px; }
+    .gauge-needle { transform-origin: 75px 75px; }
+
+    .legend {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      background: rgba(0, 0, 0, .8);
+      backdrop-filter: blur(4px);
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: .55rem;
+      z-index: 1000;
+      color: white;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .leaflet-top.leaflet-right { top: 55px; }
+    .leaflet-bottom.leaflet-left { bottom: 50px; left: 12px; }
+    .leaflet-control-scale { margin-left: 0 !important; margin-bottom: 0 !important; }
+    .leaflet-control-scale-line {
+      background: rgba(0,0,0,0.82) !important;
+      color: #ecf0f1 !important;
+      border: 1px solid rgba(46,204,113,0.7) !important;
+      border-top: none !important;
+      font-family: monospace;
+      font-size: 0.62rem;
+      font-weight: 600;
+      padding: 2px 6px !important;
+      backdrop-filter: blur(4px);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+      text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+    }
+
+    .leaflet-bottom.leaflet-right { bottom: 0; right: 0; z-index: 999; }
+    .leaflet-control-attribution {
+      background: rgba(0,0,0,0.7) !important;
+      color: #95a5a6 !important;
+      font-size: 0.55rem !important;
+      padding: 2px 6px !important;
+      border-top-left-radius: 6px;
+      backdrop-filter: blur(4px);
+      border: 1px solid rgba(46,204,113,0.2);
+      border-right: none;
+      border-bottom: none;
+    }
+    .leaflet-control-attribution a { color: #2ecc71 !important; text-decoration: none; }
+    .leaflet-control-attribution a:hover { text-decoration: underline; }
+
+    .leaflet-control-zoom a {
+      background: rgba(0,0,0,0.85) !important;
+      color: #2ecc71 !important;
+      border: 1px solid rgba(46,204,113,0.4) !important;
+      backdrop-filter: blur(4px);
+    }
+    .leaflet-control-zoom a:hover {
+      background: rgba(46,204,113,0.25) !important;
+      color: #fff !important;
+    }
+
+    .environmental-car-icon {
+      width: 18px; height: 18px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.7));
+    }
+    .car-sedan-body {
+      width: 9px; height: 17px;
+      background: linear-gradient(180deg, #27ae60 0%, #1e4620 40%, #0f2b13 100%);
+      border: 1px solid #2ecc71;
+      border-radius: 3px 3px 2px 2px;
+      position: relative;
+      box-shadow: inset 0 0 2px rgba(0, 0, 0, 0.9), 0 0 4px rgba(46, 204, 113, 0.6);
+      transform-origin: center center;
+      will-change: transform;
+    }
+    .car-sedan-hood {
+      position: absolute; top: 1px; left: 1px; right: 1px; height: 4px;
+      background: linear-gradient(180deg, #2ecc71, #1e4620);
+      border-radius: 2px 2px 1px 1px;
+      border-bottom: 1px solid rgba(0,0,0,0.5);
+    }
+    .car-led-lights {
+      position: absolute; top: -1px; left: 0px; right: 0px; height: 1.5px;
+      display: flex; justify-content: space-between; z-index: 10;
+    }
+    .car-led-lights span {
+      width: 2px; height: 1.5px; background: #fff; border-radius: 1px;
+      box-shadow: 0 -1.5px 4px 1.5px rgba(255, 255, 200, 0.9), 0 0 2px #f1c40f;
+    }
+    .car-rear-lights {
+      position: absolute; bottom: -1px; left: 0px; right: 0px; height: 1.5px;
+      display: flex; justify-content: space-between; z-index: 10;
+    }
+    .car-rear-lights span {
+      width: 2px; height: 1.5px; background: #e74c3c; border-radius: 1px;
+      box-shadow: 0 1px 3px 1px rgba(231, 76, 60, 0.7);
+    }
+    .car-cabin {
+      position: absolute; top: 5px; left: 1px; right: 1px; height: 7px;
+      background: linear-gradient(180deg, #1a252f 0%, #2c3e50 100%);
+      border-radius: 1.5px;
+      border: 0.5px solid rgba(255,255,255,0.3);
+      box-shadow: inset 0 0 2px rgba(0,0,0,0.8);
+    }
+    .car-windshield {
+      position: absolute; top: 1px; left: 1px; right: 1px; height: 1.5px;
+      background: linear-gradient(180deg, #3498db, #1f618d);
+      border-radius: 1px; opacity: 0.9;
+    }
+    .car-rear-window {
+      position: absolute; bottom: 1px; left: 1px; right: 1px; height: 1.5px;
+      background: linear-gradient(180deg, #1f618d, #1a252f);
+      border-radius: 1px;
+    }
+    .car-siren {
+      position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+      width: 3px; height: 2px; background: #f39c12; border-radius: 1px;
+      box-shadow: 0 0 3px #f39c12;
+      animation: emergencyFlash 0.6s infinite alternate;
+      z-index: 12;
+    }
+    @keyframes emergencyFlash {
+      0% { background: #f39c12; box-shadow: 0 0 2px #f39c12; }
+      100% { background: #e74c3c; box-shadow: 0 0 6px #e74c3c, 0 0 9px #f1c40f; }
+    }
+
+    .dump-triangle {
+      width: 0; height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-bottom: 11px solid #f39c12;
+      filter: drop-shadow(0 0 2px rgba(0,0,0,0.8));
+      transform-origin: 50% 100%;
+    }
+    .dump-triangle-visited {
+      width: 0; height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-bottom: 11px solid #7f8c8d;
+      transform-origin: 50% 100%;
+    }
+    .dump-triangle-active {
+      animation: triangleBlink 0.7s infinite alternate !important;
+      filter: drop-shadow(0 0 8px #f1c40f) drop-shadow(0 0 4px #f39c12) !important;
+    }
+    @keyframes triangleBlink {
+      0% { opacity: 0.35; transform: scale(1) translateY(0); }
+      100% { opacity: 1; transform: scale(1.7) translateY(-1px); }
+    }
+
+    .center-dot {
+      background: #2ecc71; width: 12px; height: 12px;
+      border-radius: 50%; border: 2px solid #fff;
+      box-shadow: 0 0 6px rgba(46, 204, 113, 0.9);
+    }
+    .center-dot-visited {
+      background: #7f8c8d !important; width: 12px; height: 12px;
+      border-radius: 50%; border: 2px solid #fff !important;
+      box-shadow: none !important;
+    }
+
+    .map-container.drag-over { border: 3px dashed #2ecc71; }
+    .drag-overlay {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(10, 26, 26, 0.85);
+      backdrop-filter: blur(4px);
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 2000;
+      color: #2ecc71;
+      font-size: 1.2rem;
+      pointer-events: none;
+    }
+    .drag-overlay i { font-size: 3rem; margin-bottom: 10px; }
+
+    .audio-player-container {
+      position: absolute;
+      bottom: 60px;
+      left: 12px;
+      z-index: 1000;
+      background: rgba(0, 0, 0, 0.9);
+      backdrop-filter: blur(8px);
+      border: 1px solid #2ecc71;
+      border-radius: 12px;
+      padding: 8px 12px;
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      width: 260px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    }
+    .audio-player-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.65rem;
+      color: #2ecc71;
+    }
+    .audio-player-header span {
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      max-width: 200px;
+    }
+    .audio-close-btn { cursor: pointer; color: #e74c3c; font-size: 0.8rem; }
+    .audio-player-container audio { width: 100%; height: 30px; }
+
+    .toast-container {
+      position: absolute;
+      top: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 3000;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      pointer-events: none;
+    }
+    .toast {
+      background: rgba(20, 30, 36, 0.96);
+      color: #ecf0f1;
+      border-left: 4px solid #f39c12;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      animation: toastIn 0.3s ease-out;
+      max-width: 380px;
+    }
+    .toast.info { border-left-color: #3498db; }
+    .toast.success { border-left-color: #2ecc71; }
+    .toast.error { border-left-color: #e74c3c; }
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .panel-footer {
+      padding: 6px; text-align: center;
+      border-top: 1px solid #2ecc7144;
+      flex-shrink: 0; background: #0a1218;
+    }
+    .panel-footer .radar-svg {
+      width: 60px; height: 60px;
+      display: block; margin: 0 auto;
+    }
+    .panel-footer hr {
+      border: 0; border-top: 1px solid #2ecc7144;
+      margin: 6px auto; width: 80%;
+    }
+    .panel-footer .author { font-size: 0.6rem; color: #bdc3c7; }
+
+    .debug-panel {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      right: 12px;
+      background: rgba(192, 57, 43, 0.95);
+      color: white;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 0.7rem;
+      z-index: 4000;
+      display: none;
+      max-height: 140px;
+      overflow-y: auto;
+    }
+    .debug-panel.visible { display: block; }
+
+    @media print {
+      body { background: white !important; color: black !important; }
+      .app { display: block !important; }
+      .top-bar, .speedometer-container, .legend, .map-container { display: none !important; }
+      .info-panel { width: 100% !important; background: white !important; color: black !important; border: none !important; box-shadow: none !important; }
+      .point-card, .accumulated-box, .stop-timer, .global-progress, .exec-summary { background: #f8f9fa !important; border: 1px solid #ccc !important; color: black !important; }
+      .accumulated-value, .distance-value, .point-name, .exec-value { color: #27ae60 !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="map-container" id="mapContainer">
+      <div id="map"></div>
+
+      <div class="drag-overlay" id="dragOverlay">
+        <i class="fas fa-file-audio"></i>
+        <span>Suelta el audio aquí para reproducirlo</span>
+      </div>
+
+      <div class="toast-container" id="toastContainer"></div>
+      <div class="debug-panel" id="debugPanel"></div>
+
+      <div class="audio-player-container" id="audioPlayerContainer">
+        <div class="audio-player-header">
+          <span id="audioFileName"><i class="fas fa-music"></i> Audio cargado</span>
+          <i class="fas fa-times audio-close-btn" id="closeAudioBtn" role="button" aria-label="Cerrar reproductor"></i>
+        </div>
+        <audio id="audioElement" controls></audio>
+      </div>
+
+      <div class="top-bar">
+        <button class="btn btn-secondary" id="pauseBtn" aria-label="Pausar simulación">
+          <i class="fas fa-pause"></i> Pausar
+        </button>
+        <button class="btn btn-danger" id="stopBtn" aria-label="Reiniciar simulación">
+          <i class="fas fa-stop"></i> Reiniciar
+        </button>
+
+        <button class="btn btn-action" id="toggleHeatmapBtn">
+          <i class="fas fa-fire"></i> Heatmap
+        </button>
+
+        <select id="exportFormatSelect" class="tool-select">
+          <option value="">💾 Exportar...</option>
+          <option value="kml">KML (Google Earth)</option>
+          <option value="geojson">GeoJSON (GIS)</option>
+          <option value="csv">CSV (Excel)</option>
+        </select>
+
+        <span style="display:inline-flex; align-items:center; gap:4px; padding-left:6px; border-left:1px solid rgba(46,204,113,0.35); flex-shrink:0;">
+          <i class="fas fa-layer-group" style="color:#2ecc71;"></i>
+          <select id="mapSelector" class="tool-select" aria-label="Seleccionar capa base">
+            <option value="esri">Satélite</option>
+            <option value="ign">IGN Topo</option>
+            <option value="ignorto">Ortofoto PNOA</option>
+            <option value="cartoDark">🌙 Mapa Oscuro</option>
+            <option value="cartoDarkNoLabels">🌑 Oscuro sin etiquetas</option>
+            <option value="cartoLight">☀️ Mapa Claro</option>
+            <option value="cartoVoyager">🗺️ Voyager</option>
+          </select>
+        </span>
+      </div>
+
+      <div class="speedometer-container">
+        <div class="speedometer-title"><i class="fas fa-tachometer-alt"></i> Velocidad (km/h sim.)</div>
+        <svg class="gauge-svg" viewBox="0 0 150 95" role="img" aria-label="Velocímetro">
+          <defs>
+            <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#3498db" />
+              <stop offset="50%" stop-color="#2ecc71" />
+              <stop offset="85%" stop-color="#f1c40f" />
+              <stop offset="100%" stop-color="#e74c3c" />
+            </linearGradient>
+          </defs>
+          <path d="M 15 75 A 60 60 0 0 1 135 75" fill="none" stroke="#111a20" stroke-width="12" stroke-linecap="round"/>
+          <path d="M 15 75 A 60 60 0 0 1 135 75" fill="none" stroke="url(#gaugeGradient)" stroke-width="8" stroke-linecap="round"/>
+          <line x1="15" y1="75" x2="22" y2="75" stroke="#ecf0f1" stroke-width="2"/>
+          <text x="26" y="72" fill="#bdc3c7" font-size="7" font-weight="bold">0</text>
+          <line x1="32.5" y1="32.5" x2="37.5" y2="37.5" stroke="#ecf0f1" stroke-width="2"/>
+          <text x="42" y="38" fill="#bdc3c7" font-size="7" font-weight="bold">30</text>
+          <line x1="75" y1="15" x2="75" y2="22" stroke="#ecf0f1" stroke-width="2"/>
+          <text x="75" y="30" fill="#bdc3c7" font-size="7" font-weight="bold" text-anchor="middle">60</text>
+          <line x1="117.5" y1="32.5" x2="112.5" y2="37.5" stroke="#ecf0f1" stroke-width="2"/>
+          <text x="108" y="38" fill="#bdc3c7" font-size="7" font-weight="bold">90</text>
+          <line x1="135" y1="75" x2="128" y2="75" stroke="#ecf0f1" stroke-width="2"/>
+          <text x="124" y="72" fill="#bdc3c7" font-size="7" font-weight="bold" text-anchor="end">120</text>
+          <rect x="52" y="58" width="46" height="15" rx="3" fill="#0d161d" stroke="#2ecc71" stroke-width="1"/>
+          <text id="speedValue" x="75" y="69" fill="#2ecc71" font-size="9" font-family="monospace" font-weight="bold" text-anchor="middle">0.0</text>
+          <g class="gauge-needle" id="gaugeNeedle" style="transform: rotate(-90deg);">
+            <polygon points="75,20 72,75 78,75" fill="#e74c3c" />
+            <circle cx="75" cy="75" r="6" fill="#ecf0f1" stroke="#c0392b" stroke-width="2"/>
+          </g>
+        </svg>
+      </div>
+
+      <div class="legend">
+        <i class="fas fa-circle" style="color:#2ecc71"></i> Cobertura (300m) &nbsp;
+        <i class="fas fa-caret-up" style="color:#f39c12"></i> Vertido &nbsp;
+        <i class="fas fa-road" style="color:#2ecc71"></i> Ruta pendiente &nbsp;
+        <i class="fas fa-road" style="color:#00e5ff"></i> Estela recorrida &nbsp;
+        <i class="fas fa-bolt" style="color:#f1c40f"></i> Zona en inspección
+      </div>
+    </div>
+
+    <aside class="info-panel" id="reportPdfArea" aria-label="Panel de información">
+      <div class="panel-header">
+        <img src="https://i.imghippo.com/files/Fiyh1752yTs.png" alt="Logo Inspección" class="panel-logo">
+        <h2><i class="fas fa-leaf"></i> Inspección Comarcal</h2>
+        <p>Benahavís · Estepona · Casares · Manilva</p>
+      </div>
+
+      <div class="exec-summary" id="execSummary">
+        <div class="exec-item">
+          <span class="exec-label">Zonas</span>
+          <span class="exec-value blue" id="execZones">0/0</span>
+        </div>
+        <div class="exec-item">
+          <span class="exec-label">Volumen<br>acum.</span>
+          <span class="exec-value green" id="execVolume">0.0</span>
+        </div>
+        <div class="exec-item">
+          <span class="exec-label">Peligrosos<br>detect.</span>
+          <span class="exec-value red" id="execHazard">0</span>
+        </div>
+      </div>
+
+      <div class="global-progress">
+        <span class="label"><i class="fas fa-list-check"></i> Progreso</span>
+        <span class="value" id="globalProgressText">0 / 0</span>
+      </div>
+      <div class="global-progress-bar">
+        <div class="global-progress-fill" id="globalProgressFill"></div>
+      </div>
+
+      <div class="point-card" id="pointCard">
+        <div class="point-name" id="pointName">---</div>
+        <div id="wasteDetailContainer"></div>
+
+        <div class="accumulated-box">
+          <span class="accumulated-label"><i class="fas fa-chart-simple"></i> Vol. Acumulado</span>
+          <span><span class="accumulated-value" id="accumulatedVolume">0.0</span> <span style="font-size:.6rem">m³</span></span>
+        </div>
+
+        <div class="accumulated-box">
+          <span class="accumulated-label"><i class="fas fa-route"></i> Distancia Recorrida</span>
+          <span><span class="distance-value" id="distanceTraveled">0.00</span> <span style="font-size:.6rem">km</span></span>
+        </div>
+
+        <div class="stop-timer">
+          <span style="font-size:.6rem"><i class="fas fa-hourglass-half"></i> Parada Técnica</span>
+          <span class="countdown-number" id="countdownDisplay">0</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        <div class="state-text" id="state">Iniciando...</div>
+      </div>
+
+      <div class="points-list">
+        <h3><i class="fas fa-map-marker-alt"></i> Zonas por Proximidad</h3>
+        <div id="pointsListContainer"></div>
+      </div>
+
+      <div class="panel-footer">
+        <svg class="radar-svg" viewBox="0 0 100 100" aria-hidden="true">
+          <circle cx="50" cy="50" r="45" fill="none" stroke="#2ecc71" stroke-width="1.5" opacity="0.4"/>
+          <circle cx="50" cy="50" r="30" fill="none" stroke="#2ecc71" stroke-width="1.5" opacity="0.6"/>
+          <circle cx="50" cy="50" r="15" fill="none" stroke="#2ecc71" stroke-width="1.5" opacity="0.8"/>
+          <line x1="50" y1="50" x2="50" y2="5" stroke="#2ecc71" stroke-width="1.5" opacity="0.5"/>
+          <line x1="50" y1="50" x2="95" y2="50" stroke="#2ecc71" stroke-width="1.5" opacity="0.5"/>
+          <line x1="50" y1="50" x2="50" y2="95" stroke="#2ecc71" stroke-width="1.5" opacity="0.5"/>
+          <line x1="50" y1="50" x2="5" y2="50" stroke="#2ecc71" stroke-width="1.5" opacity="0.5"/>
+          <g>
+            <path d="M50 50 L50 5 A45 45 0 0 1 95 50 Z" fill="#2ecc71" opacity="0.25">
+              <animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="4s" repeatCount="indefinite"/>
+            </path>
+          </g>
+          <g id="radarDetectionDots"></g>
+        </svg>
+        <hr>
+        <div class="author">Autor: <strong>N.I.A. 3113PD - Octubre de 2026</strong></div>
+      </div>
+    </aside>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
+  <script>
+    /* ============================================================
+       CONFIGURACIÓN GLOBAL - GRAPHHOPPER
+       ============================================================ */
+    const GRAPHHOPPER_API_KEY = "f534b9eb-f247-4a87-82fb-552b25329450";
+    const GRAPHHOPPER_URL = "https://graphhopper.com/api/1/route";
+
+    const DETECTION_RADIUS_METERS = 300;
+    const ROUTE_CACHE_KEY = "inspeccion_residuos_route_v23_graphhopper_avoid_motorway";
+
+    const SPEED_MIN_CRUISE = 60;
+    const SPEED_MAX_HIGHWAY = 110;
+    const SPEED_GAUGE_MAX = 120;
+    const SPEED_ARRIVAL = 2;
+
+    const LONG_HAUL_DISTANCE_MIN = 500;
+    const LONG_HAUL_DISTANCE_MAX = 3000;
+    const DECELERATION_START_M = DETECTION_RADIUS_METERS;
+
+    const METERS_PER_SPEED_UNIT = 4.0;
+    const LONG_HAUL_TIME_COMPRESSION = 1.4;
+
+    const ACCEL_RATE = 35;
+    const DECEL_RATE = 60;
+
+    const INTERPOLATION_MAX_SEGMENT_M = 40;
+    const MAX_DIST_ROUTE_TO_ZONE_M = 5;
+    const MAX_SPUR_LENGTH_M = 900;
+    const CAR_TURN_RATE_DEG_S = 540;
+    const BLINK_CLEAR_DISTANCE_M = 25;
+
+    const TRAIL_COLOR_MAIN = '#00e5ff';
+    const TRAIL_COLOR_HALO = '#ffffff';
+    const TRAIL_COLOR_OUTLINE = '#0a1a22';
+    const TRAIL_STEP_M = 8;
+
+    const HAZARD_AUDIO_URL = "https://github.com/alfonsojimenez876-cmyk/inspeccion_RESIDUOS/raw/refs/heads/main/tithuh-warning-545568.mp3";
+    const hazardAudio = new Audio(HAZARD_AUDIO_URL);
+    hazardAudio.preload = "auto";
+
+    const DANGEROUS_WASTES = [
+      "uralita", "rcd con uralita", "neumáticos", "plásticos",
+      "vehículo abandonado", "motocicleta", "pavimento asfáltico",
+      "aceite", "filtro de aceite", "nfu"
+    ];
+
+    const SAMPLE_IMAGES = [
+      "https://images.unsplash.com/photo-1530587191325-3db32d826c18?auto=format&fit=crop&w=600&q=80",
+      "https://images.unsplash.com/photo-1605600659873-d808a13e4d2a?auto=format&fit=crop&w=600&q=80",
+      "https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?auto=format&fit=crop&w=600&q=80"
+    ];
+
+    const WASTE_COLORS = {
+      'RCD': '#f39c12',
+      'Residuos biodegradables': '#2ecc71',
+      'Residuos de poda': '#2ecc71',
+      'Plásticos': '#e74c3c',
+      'Plástico': '#e74c3c',
+      'Enseres': '#3498db',
+      'Maderas': '#8e44ad',
+      'Madera': '#8e44ad',
+      'Pavimento asfáltico': '#34495e',
+      'Neumáticos': '#1abc9c',
+      'NFU': '#1abc9c',
+      'Vehículo abandonado': '#e67e22',
+      'Vehículo abandonado y calcinado': '#e67e22',
+      'Vehículo calcinado': '#e67e22',
+      'Vehículo canibalizado': '#e67e22',
+      'Motocicleta': '#e67e22',
+      'Basura': '#7f8c8d',
+      'Ferralla': '#95a5a6',
+      'RCD con uralita': '#9b59b6',
+      'uralita': '#9b59b6',
+      'R.C.D. sin RR.PP.': '#f39c12',
+      'R.C.D. sin RR.PP. Y Residuos biodegradables': '#f1c40f',
+      'Cristales': '#85c1e9',
+      'RAEE': '#5d6d7e',
+      'Metal': '#bdc3c7',
+      'Hierros': '#95a5a6',
+      'Aceite motor': '#4a235a',
+      'Aceite de motor': '#4a235a',
+      'Aceite vehículo': '#4a235a',
+      'Filtro de aceite vehículo': '#4a235a',
+      'Filtro de aceite de vehículo': '#4a235a',
+      'Restos de embarcación': '#7fb3d5',
+      'Carrocería vehículo': '#e67e22',
+      'Residuos de 2 embarcaciones': '#7fb3d5',
+      '2 vehículos calcinados': '#e67e22',
+      'Residuos vehículo': '#e67e22'
+    };
+
+    function wasteColor(type) {
+      if (WASTE_COLORS[type]) return WASTE_COLORS[type];
+      const t = type.toLowerCase();
+      if (t.includes('rcd') || t.includes('r.c.d')) return '#f39c12';
+      if (t.includes('biodegradable')) return '#2ecc71';
+      if (t.includes('pod')) return '#2ecc71';
+      if (t.includes('plástic') || t.includes('plastic')) return '#e74c3c';
+      if (t.includes('madera')) return '#8e44ad';
+      if (t.includes('neumátic') || t.includes('neumatic') || t.includes('nfu')) return '#1abc9c';
+      if (t.includes('basura')) return '#7f8c8d';
+      if (t.includes('uralita')) return '#9b59b6';
+      if (t.includes('cristal')) return '#85c1e9';
+      if (t.includes('vehículo') || t.includes('vehiculo')) return '#e67e22';
+      if (t.includes('aceite')) return '#4a235a';
+      if (t.includes('metal') || t.includes('fierro') || t.includes('ferralla')) return '#95a5a6';
+      if (t.includes('ensere')) return '#3498db';
+      if (t.includes('raee')) return '#5d6d7e';
+      if (t.includes('embarcaci')) return '#7fb3d5';
+      return '#95a5a6';
+    }
+
+    function utmToLatLng(easting, northing) {
+      const a = 6378137.0;
+      const f = 1 / 298.257223563;
+      const e2 = 2*f - f*f;
+      const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+      const k0 = 0.9996;
+      const lon0 = -3 * Math.PI / 180;
+      const E0 = 500000;
+      const N0 = 0;
+
+      const x = easting - E0;
+      const y = northing - N0;
+      const M = y / k0;
+      const mu = M / (a * (1 - e2/4 - 3*e2*e2/64 - 5*e2*e2*e2/256));
+
+      const phi1 = mu
+        + (3*e1/2 - 27*e1*e1*e1/32) * Math.sin(2*mu)
+        + (21*e1*e1/16 - 55*e1*e1*e1*e1/32) * Math.sin(4*mu)
+        + (151*e1*e1*e1/96) * Math.sin(6*mu)
+        + (1097*e1*e1*e1*e1/512) * Math.sin(8*mu);
+
+      const sinPhi1 = Math.sin(phi1);
+      const cosPhi1 = Math.cos(phi1);
+      const tanPhi1 = Math.tan(phi1);
+
+      const N1 = a / Math.sqrt(1 - e2*sinPhi1*sinPhi1);
+      const T1 = tanPhi1*tanPhi1;
+      const C1 = (e2/(1-e2))*cosPhi1*cosPhi1;
+      const R1 = a*(1-e2)/Math.pow(1 - e2*sinPhi1*sinPhi1, 1.5);
+      const D = x / (N1*k0);
+
+      const lat = phi1 - (N1*tanPhi1/R1) * (
+        D*D/2
+        - (5 + 3*T1 + 10*C1 - 4*C1*C1 - 9*(e2/(1-e2))) * Math.pow(D,4)/24
+        + (61 + 90*T1 + 298*C1 + 45*T1*T1 - 252*(e2/(1-e2)) - 3*C1*C1) * Math.pow(D,6)/720
+      );
+
+      const lon = lon0 + (
+        D
+        - (1 + 2*T1 + C1) * Math.pow(D,3)/6
+        + (5 - 2*C1 + 28*T1 - 3*C1*C1 + 8*(e2/(1-e2)) + 24*T1*T1) * Math.pow(D,5)/120
+      ) / cosPhi1;
+
+      return { lat: lat * 180/Math.PI, lon: lon * 180/Math.PI };
+    }
+
+    const RAW_POINTS_CSV = [
+      { id: "CSV-1",  name: "CSV 02-11-2022 · 298067,4021533", lat: 36.336453, lng: -5.315974, wastes: [{ type: "Residuos biodegradables", volume: 7 }] },
+      { id: "CSV-2",  name: "CSV 02-11-2022 · 297999,4021126", lat: 36.340551, lng: -5.261539, wastes: [{ type: "Residuos biodegradables", volume: 2 }] },
+      { id: "CSV-3",  name: "CSV 02-11-2022 · 298176,4021434", lat: 36.340553, lng: -5.260503, wastes: [{ type: "Residuos biodegradables", volume: 18 }] },
+      { id: "CSV-4",  name: "CSV 02-11-2022 · 298021,4023776", lat: 36.340778, lng: -5.260019, wastes: [{ type: "Residuos biodegradables", volume: 60 }] },
+      { id: "CSV-5",  name: "CSV 02-11-2022 · 297068,4024147", lat: 36.350915, lng: -5.254919, wastes: [{ type: "R.C.D. sin RR.PP.", volume: 2 }] },
+      { id: "CSV-6",  name: "CSV 02-11-2022 · 297042,4024100", lat: 36.351090, lng: -5.254757, wastes: [{ type: "Residuos biodegradables", volume: 8 }] },
+      { id: "CSV-7",  name: "CSV 02-11-2022 · 297027,4024095", lat: 36.348985, lng: -5.254061, wastes: [{ type: "R.C.D. sin RR.PP.", volume: 6 }] },
+      { id: "CSV-8",  name: "CSV 02-11-2022 · 297029,4024084", lat: 36.357527, lng: -5.253717, wastes: [{ type: "R.C.D. sin RR.PP.", volume: 2 }] },
+      { id: "CSV-9",  name: "CSV 02-11-2022 · 297111,4024084", lat: 36.357546, lng: -5.253684, wastes: [{ type: "R.C.D. sin RR.PP.", volume: 2 }] },
+      { id: "CSV-10", name: "CSV 02-11-2022 · 297128,4024093", lat: 36.349813, lng: -5.253662, wastes: [{ type: "R.C.D. sin RR.PP.", volume: 27 }] },
+      { id: "CSV-11", name: "CSV 02-11-2022 · 297193,4024053", lat: 36.356793, lng: -5.252938, wastes: [{ type: "R.C.D. sin RR.PP.", volume: 17 }] },
+      { id: "CSV-12", name: "CSV 02-11-2022 · 297267,4024197", lat: 36.359251, lng: -5.250736, wastes: [{ type: "R.C.D. sin RR.PP. Y Residuos biodegradables", volume: 3 }] }
+    ];
+
+    const GEOJSON_FEATURES = [
+      {"VERTIDO":1,"FECHA":"09/11/2020","COORD. X":297947,"COORD. Y":4021911,"LUGAR-PARA":"AR CALATARAJE 17 (A) (Manilva)","TIPOLOGÍA":"Residuos de poda","VOLUMEN ES":4,"T.M.":"Manilva"},
+      {"VERTIDO":2,"FECHA":"09/11/2020","COORD. X":298181,"COORD. Y":4021667,"LUGAR-PARA":"UR TUBALITAS 37 (Manilva)","TIPOLOGÍA":"RCD, ferralla, plásticos","VOLUMEN ES":10,"T.M.":"Manilva"},
+      {"VERTIDO":3,"FECHA":"09/11/2020","COORD. X":298200,"COORD. Y":4021644,"LUGAR-PARA":"UR TUBALITAS 38 (Manilva)","TIPOLOGÍA":"RCD","VOLUMEN ES":3,"T.M.":"Manilva"},
+      {"VERTIDO":4,"FECHA":"09/11/2020","COORD. X":298170,"COORD. Y":4021668,"LUGAR-PARA":"UR TUBALITAS 37 (Manilva)","TIPOLOGÍA":"RCD, plásticos, ferralla, residuos de poda","VOLUMEN ES":11,"T.M.":"Manilva"},
+      {"VERTIDO":5,"FECHA":"09/11/2020","COORD. X":298147,"COORD. Y":4021670,"LUGAR-PARA":"UR TUBALITAS 33 (Manilva)","TIPOLOGÍA":"RCD","VOLUMEN ES":4,"T.M.":"Manilva"},
+      {"VERTIDO":6,"FECHA":"09/11/2020","COORD. X":298171,"COORD. Y":4021428,"LUGAR-PARA":"AR CHULLERA PARK 61(A) (Manilva)","TIPOLOGÍA":"Residuos de poda","VOLUMEN ES":6,"T.M.":"Manilva"},
+      {"VERTIDO":7,"FECHA":"09/11/2020","COORD. X":298080,"COORD. Y":4022487,"LUGAR-PARA":"AR LOMA DEL REY 3 (Manilva)","TIPOLOGÍA":"RCD","VOLUMEN ES":9,"T.M.":"Manilva"},
+      {"VERTIDO":8,"FECHA":"09/11/2020","COORD. X":298249,"COORD. Y":4023611,"LUGAR-PARA":"AR CAMINO MARTAGINA 3(B) (Manilva)","TIPOLOGÍA":"RCD, plásticos, residuos de poda, maderas, enseres","VOLUMEN ES":14,"T.M.":"Manilva"},
+      {"VERTIDO":9,"FECHA":"09/11/2020","COORD. X":298032,"COORD. Y":4023780,"LUGAR-PARA":"AR CAMINO MARTAGINA 44 (Manilva)","TIPOLOGÍA":"Motocicleta, residuos de poda","VOLUMEN ES":50,"T.M.":"Manilva"},
+      {"VERTIDO":10,"FECHA":"09/11/2020","COORD. X":297037,"COORD. Y":4024096,"LUGAR-PARA":"MARTAGINA (Manilva)","TIPOLOGÍA":"RCD, plásticos, enseres, maderas, residuos de poda, basura","VOLUMEN ES":9,"T.M.":"Manilva"},
+      {"VERTIDO":11,"FECHA":"09/11/2020","COORD. X":297196,"COORD. Y":4024050,"LUGAR-PARA":"MARTAGINA (Manilva)","TIPOLOGÍA":"RCD, plásticos, maderas, residuos de poda","VOLUMEN ES":10,"T.M.":"Manilva"},
+      {"VERTIDO":12,"FECHA":"09/11/2020","COORD. X":297174,"COORD. Y":4024118,"LUGAR-PARA":"MARTAGINA (Manilva)","TIPOLOGÍA":"Pavimento asfáltico","VOLUMEN ES":5,"T.M.":"Manilva"},
+      {"VERTIDO":13,"FECHA":"09/11/2020","COORD. X":297130,"COORD. Y":4024094,"LUGAR-PARA":"MARTAGINA (Manilva)","TIPOLOGÍA":"RCD, maderas, plásticos, residuos de poda, enseres,","VOLUMEN ES":14,"T.M.":"Manilva"},
+      {"VERTIDO":14,"FECHA":"11/11/2020","COORD. X":292140,"COORD. Y":4023757,"LUGAR-PARA":"HONDA CAVADA (Casares)","TIPOLOGÍA":"RCD, maderas, residuos de poda, plásticos","VOLUMEN ES":30,"T.M.":"Casares"},
+      {"VERTIDO":15,"FECHA":"11/11/2020","COORD. X":298698,"COORD. Y":4023302,"LUGAR-PARA":"UR LOMA BLANCA 3 (Manilva)","TIPOLOGÍA":"Vehículo abandonado","VOLUMEN ES":2,"T.M.":"Manilva"},
+      {"VERTIDO":16,"FECHA":"11/11/2020","COORD. X":297673,"COORD. Y":4025251,"LUGAR-PARA":"ALCORRÍN (Manilva)","TIPOLOGÍA":"RCD","VOLUMEN ES":2,"T.M.":"Manilva"},
+      {"VERTIDO":17,"FECHA":"11/11/2020","COORD. X":297658,"COORD. Y":4025232,"LUGAR-PARA":"ALCORRÍN (Manilva)","TIPOLOGÍA":"RCD, plásticos, residuos de poda, enseres, maderas, neumáticos","VOLUMEN ES":8,"T.M.":"Manilva"},
+      {"VERTIDO":18,"FECHA":"11/11/2020","COORD. X":297768,"COORD. Y":4025107,"LUGAR-PARA":"ALCORRÍN (Manilva)","TIPOLOGÍA":"Residuos de poda","VOLUMEN ES":4,"T.M.":"Manilva"},
+      {"VERTIDO":19,"FECHA":"11/11/2020","COORD. X":297730,"COORD. Y":4025016,"LUGAR-PARA":"ALCORRÍN (Manilva)","TIPOLOGÍA":"RCD, plásticos, pavimento asfáltico","VOLUMEN ES":3,"T.M.":"Manilva"},
+      {"VERTIDO":20,"FECHA":"11/11/2020","COORD. X":298055,"COORD. Y":4026148,"LUGAR-PARA":"AR NUEVO GOLF (Manilva)","TIPOLOGÍA":"RCD, pavimento asfáltico, plásticos","VOLUMEN ES":3,"T.M.":"Manilva"},
+      {"VERTIDO":21,"FECHA":"11/11/2020","COORD. X":298065,"COORD. Y":4026191,"LUGAR-PARA":"AR NUEVO GOLF (Manilva)","TIPOLOGÍA":"RCD con uralita, plásticos","VOLUMEN ES":3,"T.M.":"Manilva"},
+      {"VERTIDO":22,"FECHA":"11/11/2020","COORD. X":297783,"COORD. Y":4025963,"LUGAR-PARA":"AR NUEVO GOLF (Manilva)","TIPOLOGÍA":"Vehículo abandonado y calcinado","VOLUMEN ES":2,"T.M.":"Manilva"},
+      {"VERTIDO":23,"FECHA":"11/11/2020","COORD. X":297851,"COORD. Y":4025880,"LUGAR-PARA":"AR NUEVO GOLF (Manilva)","TIPOLOGÍA":"RCD con uralita, maderas, basura, plásticos","VOLUMEN ES":2,"T.M.":"Manilva"},
+      {"VERTIDO":24,"FECHA":"11/11/2020","COORD. X":297321,"COORD. Y":4029047,"LUGAR-PARA":"CL CONSTRUCCION 5 (C) (Manilva)","TIPOLOGÍA":"RCD","VOLUMEN ES":5,"T.M.":"Manilva"},
+      {"VERTIDO":25,"FECHA":"11/11/2020","COORD. X":297786,"COORD. Y":4025965,"LUGAR-PARA":"AR NUEVO GOLF (Manilva)","TIPOLOGÍA":"RCD, residuos de poda, plásticos","VOLUMEN ES":9,"T.M.":"Manilva"},
+      {"VERTIDO":26,"FECHA":"11/11/2020","COORD. X":298184,"COORD. Y":4025965,"LUGAR-PARA":"AR NUEVO GOLF (Manilva)","TIPOLOGÍA":"Residuos de poda","VOLUMEN ES":3,"T.M.":"Manilva"},
+      {"VERTIDO":27,"FECHA":"11/11/2020","COORD. X":297148,"COORD. Y":4029324,"LUGAR-PARA":"LA DEHESILLA (Casares)","TIPOLOGÍA":"RCD, residuos de poda","VOLUMEN ES":2,"T.M.":"Casares"},
+      {"VERTIDO":28,"FECHA":"11/11/2020","COORD. X":295194,"COORD. Y":4030638,"LUGAR-PARA":"LOS LLANOS (Casares)","TIPOLOGÍA":"Vehículo abandonado y calcinado","VOLUMEN ES":2,"T.M.":"Casares"},
+      {"VERTIDO":29,"FECHA":"11/11/2020","COORD. X":296321,"COORD. Y":4027602,"LUGAR-PARA":"RONDANA (Manilva)","TIPOLOGÍA":"RCD, restos de embarcación, enseres, metal, plásticos, residuos de poda","VOLUMEN ES":66,"T.M.":"Manilva"},
+      {"VERTIDO":30,"FECHA":"27/01/2021","COORD. X":302215,"COORD. Y":4032184,"LUGAR-PARA":"UR FINCA DALENA (Estepona)","TIPOLOGÍA":"RCD, residuos de poda","VOLUMEN ES":5,"T.M.":"Estepona"},
+      {"VERTIDO":31,"FECHA":"27/01/2021","COORD. X":301488,"COORD. Y":4032460,"LUGAR-PARA":"AR DEPORTIVO ARROYO VAQUERO 15 (Estepona)","TIPOLOGÍA":"RCD, NFU, plásticos, pavimento asfáltico","VOLUMEN ES":400,"T.M.":"Estepona"},
+      {"VERTIDO":32,"FECHA":"27/01/2021","COORD. X":302359,"COORD. Y":4031341,"LUGAR-PARA":"TORREQUEBRADA (Estepona)","TIPOLOGÍA":"RCD, maderas, plásticos","VOLUMEN ES":3,"T.M.":"Estepona"},
+      {"VERTIDO":33,"FECHA":"27/01/2021","COORD. X":303001,"COORD. Y":4031055,"LUGAR-PARA":"AR DEPORTIVO ARROYO VAQUERO 46 (Estepona)","TIPOLOGÍA":"Maderas, cristales, enseres, NFU, plásticos","VOLUMEN ES":5,"T.M.":"Estepona"},
+      {"VERTIDO":34,"FECHA":"27/01/2021","COORD. X":303040,"COORD. Y":4031069,"LUGAR-PARA":"DS ARROYO VAQUERO (Estepona)","TIPOLOGÍA":"Residuos de poda, basura, plásticos","VOLUMEN ES":8,"T.M.":"Estepona"},
+      {"VERTIDO":35,"FECHA":"27/01/2021","COORD. X":303181,"COORD. Y":4031208,"LUGAR-PARA":"PD ARROYO ENMEDIO 3 (Estepona)","TIPOLOGÍA":"RCD, maderas, residuos de poda","VOLUMEN ES":30,"T.M.":"Estepona"},
+      {"VERTIDO":36,"FECHA":"27/01/2021","COORD. X":303154,"COORD. Y":4031287,"LUGAR-PARA":"PD ARROYO ENMEDIO 5 (Estepona)","TIPOLOGÍA":"Maderas, cristales, plásticos, pavimento asfáltico","VOLUMEN ES":20,"T.M.":"Estepona"},
+      {"VERTIDO":37,"FECHA":"27/01/2021","COORD. X":303127,"COORD. Y":4031330,"LUGAR-PARA":"PD ARROYO ENMEDIO 5 (Estepona)","TIPOLOGÍA":"Residuos de poda","VOLUMEN ES":4,"T.M.":"Estepona"},
+      {"VERTIDO":38,"FECHA":"27/01/2021","COORD. X":303197,"COORD. Y":4031087,"LUGAR-PARA":"DS ARROYO VAQUERO (Estepona)","TIPOLOGÍA":"RCD","VOLUMEN ES":3,"T.M.":"Estepona"},
+      {"VERTIDO":39,"FECHA":"27/01/2021","COORD. X":302209,"COORD. Y":4031045,"LUGAR-PARA":"TORREQUEBRADA (Estepona)","TIPOLOGÍA":"RCD","VOLUMEN ES":6,"T.M.":"Estepona"},
+      {"VERTIDO":40,"FECHA":"27/01/2021","COORD. X":303176,"COORD. Y":4031077,"LUGAR-PARA":"DS ARROYO VAQUERO (Estepona)","TIPOLOGÍA":"Residuos de poda","VOLUMEN ES":8,"T.M.":"Estepona"},
+      {"VERTIDO":41,"FECHA":"27/01/2021","COORD. X":302792,"COORD. Y":4032295,"LUGAR-PARA":"UR. SANTA MARÍA 5C-UA (Estepona)","TIPOLOGÍA":"RCD, plásticos, residuos de poda","VOLUMEN ES":6,"T.M.":"Estepona"},
+      {"VERTIDO":42,"FECHA":"27/01/2021","COORD. X":303343,"COORD. Y":4031185,"LUGAR-PARA":"PD ARROYO ENMEDIO 2 (Estepona)","TIPOLOGÍA":"RCD","VOLUMEN ES":2,"T.M.":"Estepona"},
+      {"VERTIDO":43,"FECHA":"27/01/2021","COORD. X":301563,"COORD. Y":4036068,"LUGAR-PARA":"CL ROMERO 23 (Casares)","TIPOLOGÍA":"RCD, plásticos, RAEE","VOLUMEN ES":2,"T.M.":"Casares"},
+      {"VERTIDO":44,"FECHA":"27/01/2021","COORD. X":303450,"COORD. Y":4032727,"LUGAR-PARA":"VALLE ROMANO (Estepona)","TIPOLOGÍA":"RCD, residuos de poda, plásticos, basura, maderas","VOLUMEN ES":36,"T.M.":"Estepona"},
+      {"VERTIDO":45,"FECHA":"27/01/2021","COORD. X":303302,"COORD. Y":4031317,"LUGAR-PARA":"PD ARROYO ENMEDIO 4 (Estepona)","TIPOLOGÍA":"RCD, residuos de poda","VOLUMEN ES":3,"T.M.":"Estepona"},
+      {"VERTIDO":46,"FECHA":"27/01/2021","COORD. X":301560,"COORD. Y":4036090,"LUGAR-PARA":"CL ROMERO 24 (Casares)","TIPOLOGÍA":"RCD, maderas, cristales, plástico, enseres","VOLUMEN ES":6,"T.M.":"Casares"},
+      {"VERTIDO":47,"FECHA":"27/01/2021","COORD. X":301434,"COORD. Y":4035576,"LUGAR-PARA":"CL LAUREL 13 (Casares)","TIPOLOGÍA":"RCD, carrocería vehículo, plásticos, filtro de aceite vehículo","VOLUMEN ES":10,"T.M.":"Casares"},
+      {"VERTIDO":48,"FECHA":"27/01/2021","COORD. X":301293,"COORD. Y":4034865,"LUGAR-PARA":"CL DURILLO 1 (Casares)","TIPOLOGÍA":"Enseres","VOLUMEN ES":2,"T.M.":"Casares"},
+      {"VERTIDO":49,"FECHA":"28/01/2021","COORD. X":305979,"COORD. Y":4033152,"LUGAR-PARA":"UR SALADAVIEJA 2 (Estepona)","TIPOLOGÍA":"RCD","VOLUMEN ES":6,"T.M.":"Estepona"},
+      {"VERTIDO":50,"FECHA":"28/01/2021","COORD. X":305696,"COORD. Y":4033341,"LUGAR-PARA":"UR CAMINO DE CASARES 16 (Estepona)","TIPOLOGÍA":"RCD, residuos de poda","VOLUMEN ES":3,"T.M.":"Estepona"},
+      {"VERTIDO":51,"FECHA":"28/01/2021","COORD. X":305545,"COORD. Y":4033374,"LUGAR-PARA":"UR SALADAVIEJA Ndup-L (Estepona)","TIPOLOGÍA":"Residuos de poda","VOLUMEN ES":2,"T.M.":"Estepona"},
+      {"VERTIDO":52,"FECHA":"28/01/2021","COORD. X":305542,"COORD. Y":4033469,"LUGAR-PARA":"UR SUP.R10 AMP. Z INDUSTRIAL 7(Z) (Estepona)","TIPOLOGÍA":"Maderas, enseres","VOLUMEN ES":5,"T.M.":"Estepona"},
+      {"VERTIDO":53,"FECHA":"28/01/2021","COORD. X":305317,"COORD. Y":4033629,"LUGAR-PARA":"CL HYPATIA 14(C) (Estepona)","TIPOLOGÍA":"RCD, residuos de 2 embarcaciones","VOLUMEN ES":3,"T.M.":"Estepona"},
+      {"VERTIDO":54,"FECHA":"28/01/2021","COORD. X":305191,"COORD. Y":4033404,"LUGAR-PARA":"CL HYPATIA 9(Z) (Estepona)","TIPOLOGÍA":"RCD, NFU, plásticos, basura, maderas, cristales, RAEE","VOLUMEN ES":14,"T.M.":"Estepona"},
+      {"VERTIDO":55,"FECHA":"28/01/2021","COORD. X":305190,"COORD. Y":4033440,"LUGAR-PARA":"UR SUP.R10 AMP. Z INDUSTRIAL 1 (Estepona)","TIPOLOGÍA":"RCD, NFU, maderas, basura, aceite vehículo, cristales","VOLUMEN ES":5,"T.M.":"Estepona"},
+      {"VERTIDO":56,"FECHA":"28/01/2021","COORD. X":305201,"COORD. Y":4033478,"LUGAR-PARA":"CL HYPATIA 9(Z) (Estepona)","TIPOLOGÍA":"RCD, enseres, residuos de poda, maderas, cristales, plásticos","VOLUMEN ES":3,"T.M.":"Estepona"},
+      {"VERTIDO":57,"FECHA":"28/01/2021","COORD. X":305201,"COORD. Y":4033505,"LUGAR-PARA":"UR SUP.R10 AMP. Z INDUSTRIAL 1 (Estepona)","TIPOLOGÍA":"Cristales, enseres, aceite de motor, basura, filtro de aceite de vehículo","VOLUMEN ES":2,"T.M.":"Estepona"},
+      {"VERTIDO":58,"FECHA":"28/01/2021","COORD. X":305296,"COORD. Y":4033910,"LUGAR-PARA":"AV BYRON 12(Z) (Estepona)","TIPOLOGÍA":"2 vehículos calcinados, cristales","VOLUMEN ES":4,"T.M.":"Estepona"},
+      {"VERTIDO":59,"FECHA":"28/01/2021","COORD. X":319671,"COORD. Y":4039649,"LUGAR-PARA":"AR CATORCE EL 1(B) (Marbella)","TIPOLOGÍA":"RCD","VOLUMEN ES":2,"T.M.":"Marbella"},
+      {"VERTIDO":60,"FECHA":"28/01/2021","COORD. X":319655,"COORD. Y":4039698,"LUGAR-PARA":"AR CATORCE EL 1(B) (Marbella)","TIPOLOGÍA":"RCD, maderas, basura, plásticos","VOLUMEN ES":2,"T.M.":"Marbella"},
+      {"VERTIDO":61,"FECHA":"28/01/2021","COORD. X":319662,"COORD. Y":4039734,"LUGAR-PARA":"AR CATORCE EL 1(B) (Marbella)","TIPOLOGÍA":"RCD, enseres, plásticos, maderas","VOLUMEN ES":3,"T.M.":"Marbella"},
+      {"VERTIDO":62,"FECHA":"28/01/2021","COORD. X":319670,"COORD. Y":4039753,"LUGAR-PARA":"AR CATORCE EL 1(B) (Marbella)","TIPOLOGÍA":"Residuos de poda, maderas, plásticos","VOLUMEN ES":11,"T.M.":"Marbella"},
+      {"VERTIDO":63,"FECHA":"28/01/2021","COORD. X":319715,"COORD. Y":4039718,"LUGAR-PARA":"AR CATORCE EL 1(B) (Marbella)","TIPOLOGÍA":"RCD, residuos de poda, madera","VOLUMEN ES":7,"T.M.":"Marbella"},
+      {"VERTIDO":64,"FECHA":"28/01/2021","COORD. X":319723,"COORD. Y":4039741,"LUGAR-PARA":"AR CATORCE EL 1(B) (Marbella)","TIPOLOGÍA":"RCD, residuos de poda, madera, enseres","VOLUMEN ES":9,"T.M.":"Marbella"},
+      {"VERTIDO":65,"FECHA":"28/01/2021","COORD. X":319825,"COORD. Y":4039741,"LUGAR-PARA":"AR CATORCE EL 1(B) (Marbella)","TIPOLOGÍA":"RCD, residuos de poda, metal","VOLUMEN ES":3,"T.M.":"Marbella"},
+      {"VERTIDO":66,"FECHA":"28/01/2021","COORD. X":319856,"COORD. Y":4039679,"LUGAR-PARA":"AR CATORCE EL 1(B) (Marbella)","TIPOLOGÍA":"Residuos de poda","VOLUMEN ES":6,"T.M.":"Marbella"},
+      {"VERTIDO":67,"FECHA":"28/01/2021","COORD. X":319790,"COORD. Y":4039693,"LUGAR-PARA":"AR CATORCE EL 1(B) (Marbella)","TIPOLOGÍA":"RCD, basura, enseres","VOLUMEN ES":2,"T.M.":"Marbella"},
+      {"VERTIDO":68,"FECHA":"28/01/2021","COORD. X":317557,"COORD. Y":4040657,"LUGAR-PARA":"UR JARALILLOS 1(A) (Benahavís)","TIPOLOGÍA":"RCD, residuos de poda, basura, enseres, RAEE, pavimento asfáltico, madera","VOLUMEN ES":7,"T.M.":"Benahavís"},
+      {"VERTIDO":69,"FECHA":"28/01/2021","COORD. X":317212,"COORD. Y":4040337,"LUGAR-PARA":"UR JARALILLOS 1(A) (Benahavís)","TIPOLOGÍA":"RCD","VOLUMEN ES":7,"T.M.":"Benahavís"},
+      {"VERTIDO":70,"FECHA":"28/01/2021","COORD. X":317128,"COORD. Y":4040262,"LUGAR-PARA":"UR JARALILLOS 1(A) (Benahavís)","TIPOLOGÍA":"RCD, enseres, residuos de poda, cristales, maderas","VOLUMEN ES":400,"T.M.":"Benahavís"},
+      {"VERTIDO":71,"FECHA":"28/01/2021","COORD. X":317068,"COORD. Y":4040098,"LUGAR-PARA":"UR JARALILLOS y BRIJÁN (Benahavís)","TIPOLOGÍA":"RCD, residuos de poda, pavimento asfáltico, plásticos, hierros, maderas, basura","VOLUMEN ES":13600,"T.M.":"Benahavís"},
+      {"VERTIDO":72,"FECHA":"28/01/2021","COORD. X":318854,"COORD. Y":4038956,"LUGAR-PARA":"CL AGATA 1 (Estepona)","TIPOLOGÍA":"RCD","VOLUMEN ES":2,"T.M.":"Estepona"},
+      {"VERTIDO":73,"FECHA":"28/01/2021","COORD. X":316350,"COORD. Y":4037844,"LUGAR-PARA":"UR TARAJE 3 (Estepona)","TIPOLOGÍA":"RCD, enseres","VOLUMEN ES":6,"T.M.":"Estepona"},
+      {"VERTIDO":74,"FECHA":"28/01/2021","COORD. X":316366,"COORD. Y":4037855,"LUGAR-PARA":"UR TARAJE 3 (Estepona)","TIPOLOGÍA":"RCD, residuos de poda, plásticos","VOLUMEN ES":2,"T.M.":"Estepona"},
+      {"VERTIDO":75,"FECHA":"28/01/2021","COORD. X":316391,"COORD. Y":4037865,"LUGAR-PARA":"UR TARAJE 3 (Estepona)","TIPOLOGÍA":"RCD, residuos de poda, plásticos","VOLUMEN ES":18,"T.M.":"Estepona"},
+      {"VERTIDO":76,"FECHA":"28/01/2021","COORD. X":316316,"COORD. Y":4037707,"LUGAR-PARA":"UR TARAJE 1 (Estepona)","TIPOLOGÍA":"RCD, residuos de poda, plásticos","VOLUMEN ES":3,"T.M.":"Estepona"},
+      {"VERTIDO":77,"FECHA":"28/01/2021","COORD. X":316377,"COORD. Y":4037816,"LUGAR-PARA":"UR TARAJE 3 (Estepona)","TIPOLOGÍA":"RCD, residuos de poda","VOLUMEN ES":75,"T.M.":"Estepona"},
+      {"VERTIDO":78,"FECHA":"28/01/2021","COORD. X":314903,"COORD. Y":4038345,"LUGAR-PARA":"UR MONTEMA-YOR BAJO (Benahavís)","TIPOLOGÍA":"Vehículo calcinado","VOLUMEN ES":2,"T.M.":"Benahavís"},
+      {"VERTIDO":79,"FECHA":"28/01/2021","COORD. X":315214,"COORD. Y":4037297,"LUGAR-PARA":"AR DEPURADO-RA GUADALMAN-SA 96 (Estepona)","TIPOLOGÍA":"Residuos de poda","VOLUMEN ES":2,"T.M.":"Estepona"},
+      {"VERTIDO":80,"FECHA":"28/01/2021","COORD. X":315349,"COORD. Y":4036644,"LUGAR-PARA":"RÍO GUADALMANSA (Estepona)","TIPOLOGÍA":"Residuos de poda","VOLUMEN ES":2,"T.M.":"Estepona"},
+      {"VERTIDO":81,"FECHA":"28/01/2021","COORD. X":315417,"COORD. Y":4036572,"LUGAR-PARA":"RÍO GUADALMANSA (Estepona)","TIPOLOGÍA":"RCD, pavimento asfáltico, enseres, plásticos","VOLUMEN ES":9,"T.M.":"Estepona"},
+      {"VERTIDO":82,"FECHA":"28/01/2021","COORD. X":315543,"COORD. Y":4036375,"LUGAR-PARA":"CR NACIONAL 340 (Estepona)","TIPOLOGÍA":"RCD, residuos de poda","VOLUMEN ES":2,"T.M.":"Estepona"},
+      {"VERTIDO":83,"FECHA":"28/01/2021","COORD. X":312808,"COORD. Y":4036425,"LUGAR-PARA":"EL VELERÍN (Estepona)","TIPOLOGÍA":"RCD","VOLUMEN ES":12,"T.M.":"Estepona"},
+      {"VERTIDO":84,"FECHA":"28/01/2021","COORD. X":312596,"COORD. Y":4036084,"LUGAR-PARA":"EL VELERÍN (Estepona)","TIPOLOGÍA":"RCD, NFU, residuos vehículo","VOLUMEN ES":4,"T.M.":"Estepona"},
+      {"VERTIDO":85,"FECHA":"28/01/2021","COORD. X":312579,"COORD. Y":4036066,"LUGAR-PARA":"EL VELERÍN (Estepona)","TIPOLOGÍA":"RCD, residuos de poda","VOLUMEN ES":2,"T.M.":"Estepona"},
+      {"VERTIDO":86,"FECHA":"29/01/2021","COORD. X":321794,"COORD. Y":4040592,"LUGAR-PARA":"CL SANTA MARÍA (SP) 7 (Marbella)","TIPOLOGÍA":"Enseres","VOLUMEN ES":2,"T.M.":"Marbella"},
+      {"VERTIDO":87,"FECHA":"29/01/2021","COORD. X":321718,"COORD. Y":4040572,"LUGAR-PARA":"CL SANTA MARÍA (SP) 7 (Marbella)","TIPOLOGÍA":"RCD, residuos de poda","VOLUMEN ES":30,"T.M.":"Marbella"},
+      {"VERTIDO":88,"FECHA":"29/01/2021","COORD. X":321669,"COORD. Y":4040581,"LUGAR-PARA":"CL SANTA MARÍA (SP) 7 (Marbella)","TIPOLOGÍA":"RCD, plásticos, basura","VOLUMEN ES":60,"T.M.":"Marbella"},
+      {"VERTIDO":89,"FECHA":"29/01/2021","COORD. X":322322,"COORD. Y":4040961,"LUGAR-PARA":"SAN PEDRO (Marbella)","TIPOLOGÍA":"Maderas, basura, residuos de poda, NFU, plásticos, cristales, enseres","VOLUMEN ES":100,"T.M.":"Marbella"},
+      {"VERTIDO":90,"FECHA":"29/01/2021","COORD. X":322154,"COORD. Y":4040759,"LUGAR-PARA":"SAN PEDRO (Marbella)","TIPOLOGÍA":"RCD, basura, residuos de poda","VOLUMEN ES":3,"T.M.":"Marbella"},
+      {"VERTIDO":91,"FECHA":"29/01/2021","COORD. X":322233,"COORD. Y":4040550,"LUGAR-PARA":"CR RONDA A-397 SAN PEDRO (Marbella)","TIPOLOGÍA":"Residuos de poda","VOLUMEN ES":3,"T.M.":"Marbella"},
+      {"VERTIDO":92,"FECHA":"29/01/2021","COORD. X":322304,"COORD. Y":4041082,"LUGAR-PARA":"CL CARRIL DEL POTRIL (Marbella)","TIPOLOGÍA":"Residuos de poda","VOLUMEN ES":4,"T.M.":"Marbella"},
+      {"VERTIDO":93,"FECHA":"29/01/2021","COORD. X":321838,"COORD. Y":4042583,"LUGAR-PARA":"TN AUTOPISTA AP-7 (Marbella)","TIPOLOGÍA":"RCD, residuos de poda, basura, enseres","VOLUMEN ES":11,"T.M.":"Marbella"},
+      {"VERTIDO":94,"FECHA":"29/01/2021","COORD. X":321702,"COORD. Y":4042532,"LUGAR-PARA":"GUADAIZA (Marbella)","TIPOLOGÍA":"RCD, enseres, basura, maderas","VOLUMEN ES":4,"T.M.":"Marbella"},
+      {"VERTIDO":95,"FECHA":"29/01/2021","COORD. X":321555,"COORD. Y":4041626,"LUGAR-PARA":"SAN PEDRO (Marbella)","TIPOLOGÍA":"RCD, vehículo, residuos de poda, plásticos","VOLUMEN ES":58,"T.M.":"Marbella"},
+      {"VERTIDO":96,"FECHA":"29/01/2021","COORD. X":312532,"COORD. Y":4035726,"LUGAR-PARA":"RÍO VELERÍN (Estepona)","TIPOLOGÍA":"Residuos de poda","VOLUMEN ES":4,"T.M.":"Estepona"},
+      {"VERTIDO":97,"FECHA":"29/01/2021","COORD. X":312499,"COORD. Y":4035967,"LUGAR-PARA":"UR VELERIN II EL 179 (Estepona)","TIPOLOGÍA":"Residuos de poda","VOLUMEN ES":10,"T.M.":"Estepona"},
+      {"VERTIDO":98,"FECHA":"29/01/2021","COORD. X":312436,"COORD. Y":4035809,"LUGAR-PARA":"UR VELERIN II EL 182 (Estepona)","TIPOLOGÍA":"Residuos de poda","VOLUMEN ES":30,"T.M.":"Estepona"},
+      {"VERTIDO":99,"FECHA":"29/01/2021","COORD. X":312402,"COORD. Y":4035836,"LUGAR-PARA":"UR VELERIN II EL 182 (Estepona)","TIPOLOGÍA":"Residuos de poda","VOLUMEN ES":18,"T.M.":"Estepona"},
+      {"VERTIDO":100,"FECHA":"29/01/2021","COORD. X":307688,"COORD. Y":4035504,"LUGAR-PARA":"LA CALA (Estepona)","TIPOLOGÍA":"RCD","VOLUMEN ES":30,"T.M.":"Estepona"},
+      {"VERTIDO":101,"FECHA":"29/01/2021","COORD. X":308028,"COORD. Y":4034556,"LUGAR-PARA":"MARIMACHO (Estepona)","TIPOLOGÍA":"RCD","VOLUMEN ES":70,"T.M.":"Estepona"},
+      {"VERTIDO":102,"FECHA":"29/01/2021","COORD. X":308094,"COORD. Y":4034487,"LUGAR-PARA":"CALANCHA (Estepona)","TIPOLOGÍA":"RCD","VOLUMEN ES":2,"T.M.":"Estepona"},
+      {"VERTIDO":103,"FECHA":"29/01/2021","COORD. X":308125,"COORD. Y":4034492,"LUGAR-PARA":"CALANCHA (Estepona)","TIPOLOGÍA":"RCD, uralita (procedente de demolición in situ), cristales","VOLUMEN ES":125,"T.M.":"Estepona"},
+      {"VERTIDO":104,"FECHA":"29/01/2021","COORD. X":299376,"COORD. Y":4028185,"LUGAR-PARA":"PANDERÓN (Manilva)","TIPOLOGÍA":"NFU","VOLUMEN ES":2,"T.M.":"Manilva"},
+      {"VERTIDO":105,"FECHA":"29/01/2021","COORD. X":312449,"COORD. Y":4035827,"LUGAR-PARA":"UR VELERÍN II EL 182 (Estepona)","TIPOLOGÍA":"Residuos de poda","VOLUMEN ES":25,"T.M.":"Estepona"},
+      {"VERTIDO":106,"FECHA":"29/01/2021","COORD. X":312506,"COORD. Y":4035648,"LUGAR-PARA":"UR VELERÍN II EL 189 (Estepona)","TIPOLOGÍA":"RCD, residuos de poda, basura","VOLUMEN ES":7,"T.M.":"Estepona"},
+      {"VERTIDO":107,"FECHA":"29/01/2021","COORD. X":312516,"COORD. Y":4035626,"LUGAR-PARA":"UR VELERÍN II EL 189 (Estepona)","TIPOLOGÍA":"RCD, residuos de poda","VOLUMEN ES":2,"T.M.":"Estepona"},
+      {"VERTIDO":108,"FECHA":"29/01/2021","COORD. X":306240,"COORD. Y":4034006,"LUGAR-PARA":"AR MONTERROSO 684 (Estepona)","TIPOLOGÍA":"RCD, residuos poda, plásticos","VOLUMEN ES":1000,"T.M.":"Estepona"},
+      {"VERTIDO":109,"FECHA":"29/01/2021","COORD. X":312406,"COORD. Y":4035585,"LUGAR-PARA":"UR VELERÍN II EL 46(D) (Estepona)","TIPOLOGÍA":"Maderas, plásticos, basura","VOLUMEN ES":2,"T.M.":"Estepona"},
+      {"VERTIDO":110,"FECHA":"29/01/2021","COORD. X":311618,"COORD. Y":4037484,"LUGAR-PARA":"CAMINO NICOLA (Estepona)","TIPOLOGÍA":"RCD, basura, metal, residuos de poda","VOLUMEN ES":28,"T.M.":"Estepona"},
+      {"VERTIDO":111,"FECHA":"29/01/2021","COORD. X":310608,"COORD. Y":4034876,"LUGAR-PARA":"P.I. LLANOS DEL NEGRO (Estepona)","TIPOLOGÍA":"RCD, residuos de poda","VOLUMEN ES":4,"T.M.":"Estepona"},
+      {"VERTIDO":112,"FECHA":"29/01/2021","COORD. X":310608,"COORD. Y":4034876,"LUGAR-PARA":"PL IND. LLANOS NEGRO 20 (Estepona)","TIPOLOGÍA":"RCD, residuos de poda","VOLUMEN ES":4,"T.M.":"Estepona"},
+      {"VERTIDO":113,"FECHA":"29/01/2021","COORD. X":310449,"COORD. Y":4034901,"LUGAR-PARA":"RÍO PADRÓN (Estepona)","TIPOLOGÍA":"RCD, residuos de poda, basura","VOLUMEN ES":15,"T.M.":"Estepona"},
+      {"VERTIDO":114,"FECHA":"29/01/2021","COORD. X":308348,"COORD. Y":4036710,"LUGAR-PARA":"EL PADRÓN (Estepona)","TIPOLOGÍA":"Enseres, basura, maderas, cristales, plásticos","VOLUMEN ES":3,"T.M.":"Estepona"},
+      {"VERTIDO":115,"FECHA":"29/01/2021","COORD. X":308377,"COORD. Y":4036724,"LUGAR-PARA":"EL PADRÓN (Estepona)","TIPOLOGÍA":"Maderas, residuos de poda, plásticos, basura","VOLUMEN ES":3,"T.M.":"Estepona"},
+      {"VERTIDO":116,"FECHA":"29/01/2021","COORD. X":307813,"COORD. Y":4034734,"LUGAR-PARA":"MARIMACHO (Estepona)","TIPOLOGÍA":"RCD con uralita, aceite motor, filtro aceite, basura","VOLUMEN ES":5,"T.M.":"Estepona"},
+      {"VERTIDO":117,"FECHA":"29/01/2021","COORD. X":309307,"COORD. Y":4035933,"LUGAR-PARA":"CUESTA MOJONES (Estepona)","TIPOLOGÍA":"Vehículo canibalizado","VOLUMEN ES":2,"T.M.":"Estepona"},
+      {"VERTIDO":118,"FECHA":"29/01/2021","COORD. X":307144,"COORD. Y":4036373,"LUGAR-PARA":"ARROYO MARIMACHO (Estepona)","TIPOLOGÍA":"RCD, maderas, cristales, pavimento asfáltico, enseres","VOLUMEN ES":4,"T.M.":"Estepona"},
+      {"VERTIDO":119,"FECHA":"29/01/2021","COORD. X":307750,"COORD. Y":4034661,"LUGAR-PARA":"DS LAS CACERIAS (Estepona)","TIPOLOGÍA":"RCD","VOLUMEN ES":200,"T.M.":"Estepona"},
+      {"VERTIDO":120,"FECHA":"29/01/2021","COORD. X":307770,"COORD. Y":4034677,"LUGAR-PARA":"DS LAS CACERIAS (Estepona)","TIPOLOGÍA":"RCD, residuos de poda, basura","VOLUMEN ES":3,"T.M.":"Estepona"},
+      {"VERTIDO":121,"FECHA":"29/01/2021","COORD. X":307807,"COORD. Y":4034617,"LUGAR-PARA":"CALANCHA (Estepona)","TIPOLOGÍA":"RCD","VOLUMEN ES":18,"T.M.":"Estepona"},
+      {"VERTIDO":122,"FECHA":"29/01/2021","COORD. X":307711,"COORD. Y":4034591,"LUGAR-PARA":"CALANCHA (Estepona)","TIPOLOGÍA":"RCD","VOLUMEN ES":28,"T.M.":"Estepona"},
+      {"VERTIDO":123,"FECHA":"29/01/2021","COORD. X":307707,"COORD. Y":4034646,"LUGAR-PARA":"DS LAS CACERIAS (Estepona)","TIPOLOGÍA":"RCD","VOLUMEN ES":14,"T.M.":"Estepona"},
+      {"VERTIDO":124,"FECHA":"29/01/2021","COORD. X":307668,"COORD. Y":4034648,"LUGAR-PARA":"CALANCHA (Estepona)","TIPOLOGÍA":"RCD","VOLUMEN ES":30,"T.M.":"Estepona"},
+      {"VERTIDO":125,"FECHA":"29/01/2021","COORD. X":307726,"COORD. Y":4034729,"LUGAR-PARA":"CALANCHA (Estepona)","TIPOLOGÍA":"RCD","VOLUMEN ES":75,"T.M.":"Estepona"},
+      {"VERTIDO":126,"FECHA":"29/01/2021","COORD. X":308025,"COORD. Y":4034500,"LUGAR-PARA":"MARIMACHO (Estepona)","TIPOLOGÍA":"RCD, basura","VOLUMEN ES":2,"T.M.":"Estepona"},
+      {"VERTIDO":127,"FECHA":"29/01/2021","COORD. X":305827,"COORD. Y":4038833,"LUGAR-PARA":"VARIOS LOS TOLVILLIT. (Estepona)","TIPOLOGÍA":"Vehículo canibalizado, uralita, plásticos, cristales, metal, basura","VOLUMEN ES":4,"T.M.":"Estepona"}
+    ];
+
+    function buildCombinedRawPoints() {
+      const combined = [];
+      RAW_POINTS_CSV.forEach(p => {
+        combined.push({ id: p.id, name: p.name, lat: p.lat, lng: p.lng, source: 'CSV', wastes: p.wastes });
+      });
+      GEOJSON_FEATURES.forEach(f => {
+        const utmX = f["COORD. X"];
+        const utmY = f["COORD. Y"];
+        if (!utmX || !utmY) return;
+        const resCoord = utmToLatLng(utmX, utmY);
+        const lat = resCoord.lat;
+        const lng = resCoord.lon !== undefined ? resCoord.lon : resCoord.lng;
+        if (lat < 35.5 || lat > 37.5 || lng < -6.5 || lng > -4.5) return;
+        const tipos = String(f["TIPOLOGÍA"] || "").split(",").map(s => s.trim()).filter(Boolean);
+        const volTotal = parseFloat(f["VOLUMEN ES"]) || 0;
+        const volPorTipo = tipos.length > 0 ? volTotal / tipos.length : volTotal;
+        const wastes = tipos.map(t => ({ type: t, volume: volPorTipo }));
+        if (wastes.length === 0) wastes.push({ type: "No especificado", volume: volTotal });
+        combined.push({
+          id: "GJ-" + f.VERTIDO,
+          name: `#${f.VERTIDO} · ${f["LUGAR-PARA"] || ''}`,
+          lat, lng,
+          source: 'GeoJSON',
+          fecha: f.FECHA,
+          tm: f["T.M."],
+          wastes
+        });
+      });
+      return combined;
+    }
+
+    const RAW_POINTS = buildCombinedRawPoints();
+
+    function buildClusterGroups(points) {
+      const unvisited = [...points];
+      const rawClusters = [];
+      while (unvisited.length > 0) {
+        const p = unvisited.shift();
+        const clusterPoints = [p];
+        let addedNew = true;
+        while (addedNew) {
+          addedNew = false;
+          for (let i = unvisited.length - 1; i >= 0; i--) {
+            const candidate = unvisited[i];
+            const isNear = clusterPoints.some(member => {
+              const d = L.latLng(member.lat, member.lng).distanceTo(L.latLng(candidate.lat, candidate.lng));
+              return d <= DETECTION_RADIUS_METERS;
+            });
+            if (isNear) {
+              clusterPoints.push(candidate);
+              unvisited.splice(i, 1);
+              addedNew = true;
+            }
+          }
+        }
+        const avgLat = clusterPoints.reduce((s, i) => s + i.lat, 0) / clusterPoints.length;
+        const avgLng = clusterPoints.reduce((s, i) => s + i.lng, 0) / clusterPoints.length;
+        const combined = [];
+        clusterPoints.forEach(item => {
+          item.wastes.forEach(w => {
+            const ex = combined.find(x => x.type === w.type);
+            if (ex) ex.volume += w.volume;
+            else combined.push({ ...w, color: wasteColor(w.type) });
+          });
+        });
+        rawClusters.push({ lat: avgLat, lng: avgLng, items: clusterPoints, wastes: combined });
+      }
+      rawClusters.sort((a, b) => b.lng - a.lng);
+      const optimized = [];
+      const pending = [...rawClusters];
+      let current = pending.shift();
+      optimized.push(current);
+      while (pending.length > 0) {
+        let nearestIdx = 0, minDist = Infinity;
+        const cur = L.latLng(current.lat, current.lng);
+        pending.forEach((c, idx) => {
+          const d = cur.distanceTo(L.latLng(c.lat, c.lng));
+          if (d < minDist) { minDist = d; nearestIdx = idx; }
+        });
+        current = pending.splice(nearestIdx, 1)[0];
+        optimized.push(current);
+      }
+      return optimized;
+    }
+
+    const INSPECTIONPOINTS = buildClusterGroups(RAW_POINTS);
+
+    let map, activeBaseLayer, routeLine = null, vehicleMarker;
+    let routeCoordinates = [];
+    let segmentMeta = [];
+    const virtualAccessZones = new Set();
+
+    let currentRouteIndex = 0, isAnimating = false, isStoppedAtPoint = false, stopTimerInterval = null;
+    let moveRAF = null, accumulatedTotal = 0, currentSpeed = 0.0;
+    let totalDistanceMeters = 0;
+    let currentCarHeading = 0;
+    let targetCarHeading = 0;
+    let hazardousZonesDetected = 0;
+
+    let trailOutline = null, trailHalo = null, trailCore = null;
+    let traveledCoords = [];
+    const visitedPoints = new Set();
+    const circlesGroup = L.layerGroup();
+    const dumpsGroup = L.layerGroup();
+    const spursGroup = L.layerGroup();
+    let blinkingZoneIndex = -1;
+    let heatLayer = null;
+    let isHeatmapActive = false;
+
+    const CARTO_ATTRIBUTION = '&copy; OpenStreetMap contributors, &copy; CARTO';
+    const CARTO_KEY = 'cb1_44l0_1_ddd43f8d4af43310e27ca660';
+
+    const baseLayers = {
+      esri: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Esri', maxZoom: 19 }),
+      ign: L.tileLayer('https://www.ign.es/wmts/mapa-raster?request=GetTile&service=WMTS&version=1.0.0&layer=MTN&style=default&tilematrixset=GoogleMapsCompatible&format=image/jpeg&TileMatrix={z}&TileCol={x}&TileRow={y}', { maxZoom: 18 }),
+      ignorto: L.tileLayer('https://www.ign.es/wmts/pnoa-ma?request=GetTile&service=WMTS&version=1.0.0&layer=OI.OrthoimageCoverage&style=default&tilematrixset=GoogleMapsCompatible&format=image/jpeg&TileMatrix={z}&TileCol={x}&TileRow={y}', { maxZoom: 19 }),
+      cartoDark: L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`, { attribution: CARTO_ATTRIBUTION, subdomains: 'abcd', maxZoom: 20 }),
+      cartoDarkNoLabels: L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/dark_nolabels/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`, { attribution: CARTO_ATTRIBUTION, subdomains: 'abcd', maxZoom: 20 }),
+      cartoLight: L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`, { attribution: CARTO_ATTRIBUTION, subdomains: 'abcd', maxZoom: 20 }),
+      cartoVoyager: L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`, { attribution: CARTO_ATTRIBUTION, subdomains: 'abcd', maxZoom: 20 })
+    };
+
+    function initAudioContext() {
+      hazardAudio.play().then(() => { hazardAudio.pause(); hazardAudio.currentTime = 0; }).catch(() => {});
+    }
+    window.addEventListener('click', initAudioContext, { once: true });
+    window.addEventListener('touchstart', initAudioContext, { once: true });
+
+    function playHazardAlarm() {
+      if (hazardAudio.readyState < 2) return;
+      try { hazardAudio.currentTime = 0; hazardAudio.play().catch(() => {}); } catch (e) {}
+    }
+
+    function speak(text) {
+      if (!('speechSynthesis' in window)) return;
+      try {
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = 'es-ES'; u.rate = 1.05; u.pitch = 1.0; u.volume = 0.95;
+        window.speechSynthesis.speak(u);
+      } catch (e) {}
+    }
+
+    function showToast(message, type = 'error', duration = 5000) {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.textContent = message;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.transition = 'opacity 0.3s, transform 0.3s';
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-10px)';
+        setTimeout(() => toast.remove(), 300);
+      }, duration);
+    }
+
+    function showDebug(msg) {
+      const panel = document.getElementById('debugPanel');
+      panel.classList.add('visible');
+      panel.textContent = msg;
+      console.error(msg);
+    }
+
+    function hasHazardousWaste(group) {
+      return group.wastes.some(w => DANGEROUS_WASTES.some(d => w.type.toLowerCase().includes(d)));
+    }
+
+    function lerpAngle(current, target, maxDeltaDeg) {
+      let diff = ((target - current + 540) % 360) - 180;
+      const clamped = Math.max(-maxDeltaDeg, Math.min(maxDeltaDeg, diff));
+      return (current + clamped + 360) % 360;
+    }
+
+    function setStateText(t) { document.getElementById('state').textContent = t; }
+
+    function updateSpeedUI(speed) {
+      currentSpeed = speed;
+      const maxGauge = SPEED_GAUGE_MAX;
+      const displaySpeed = Math.max(0, Math.min(maxGauge, speed));
+      const sv = document.getElementById('speedValue');
+      if (sv) sv.textContent = speed > maxGauge ? `>${maxGauge}` : displaySpeed.toFixed(1);
+      const angle = -90 + (displaySpeed / maxGauge) * 180;
+      const needle = document.getElementById('gaugeNeedle');
+      if (needle) needle.style.transform = `rotate(${angle}deg)`;
+    }
+
+    function updateDistanceUI(m) {
+      document.getElementById('distanceTraveled').innerText = (m / 1000).toFixed(2);
+    }
+
+    function updateGlobalProgress() {
+      const total = INSPECTIONPOINTS.length;
+      const done = visitedPoints.size;
+      document.getElementById('globalProgressText').innerText = `${done} / ${total}`;
+      document.getElementById('globalProgressFill').style.width = `${(done / total) * 100}%`;
+    }
+
+    function updateExecutiveSummary() {
+      document.getElementById('execZones').innerText = `${visitedPoints.size}/${INSPECTIONPOINTS.length}`;
+      document.getElementById('execVolume').innerText = accumulatedTotal.toFixed(1);
+      document.getElementById('execHazard').innerText = hazardousZonesDetected;
+    }
+
+    function calculateBearing(lat1, lon1, lat2, lon2) {
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const lat1Rad = lat1 * Math.PI / 180;
+      const lat2Rad = lat2 * Math.PI / 180;
+      const y = Math.sin(dLon) * Math.cos(lat2Rad);
+      const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon);
+      return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    }
+
+    function applyCarRotation(heading) {
+      const el = document.getElementById('carIconElement');
+      if (el) el.style.transform = `rotate(${heading}deg)`;
+    }
+
+    function getTimeCompression(distToNextZone) {
+      if (distToNextZone <= LONG_HAUL_DISTANCE_MIN) return 1.0;
+      if (distToNextZone >= LONG_HAUL_DISTANCE_MAX) return LONG_HAUL_TIME_COMPRESSION;
+      const t = (distToNextZone - LONG_HAUL_DISTANCE_MIN) / (LONG_HAUL_DISTANCE_MAX - LONG_HAUL_DISTANCE_MIN);
+      return 1.0 + (LONG_HAUL_TIME_COMPRESSION - 1.0) * t;
+    }
+
+    function updateRadarDots() {
+      const dotsGroup = document.getElementById('radarDetectionDots');
+      if (!dotsGroup) return;
+      dotsGroup.innerHTML = '';
+      const carPos = vehicleMarker.getLatLng();
+
+      INSPECTIONPOINTS.forEach(group => {
+        group.items.forEach(point => {
+          const pointLatLng = L.latLng(point.lat, point.lng);
+          const dist = carPos.distanceTo(pointLatLng);
+          if (dist > DETECTION_RADIUS_METERS) return;
+
+          const bearingToPoint = calculateBearing(carPos.lat, carPos.lng, point.lat, point.lng);
+          const angleRad = (bearingToPoint * Math.PI) / 180;
+          const radiusMax = 42;
+          const r = Math.max(10, (dist / DETECTION_RADIUS_METERS) * radiusMax);
+          const cx = 50 + r * Math.sin(angleRad);
+          const cy = 50 - r * Math.cos(angleRad);
+          const mainWaste = point.wastes && point.wastes[0];
+          const color = mainWaste ? wasteColor(mainWaste.type) : '#ffffff';
+
+          const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          dot.setAttribute('cx', cx.toFixed(2));
+          dot.setAttribute('cy', cy.toFixed(2));
+          dot.setAttribute('r', '3');
+          dot.setAttribute('fill', color);
+          dot.setAttribute('stroke', '#ffffff');
+          dot.setAttribute('stroke-width', '0.9');
+          dotsGroup.appendChild(dot);
+        });
+      });
+    }
+
+    function drawMapElements() {
+      circlesGroup.clearLayers();
+      dumpsGroup.clearLayers();
+      const heatData = [];
+
+      INSPECTIONPOINTS.forEach((group, idx) => {
+        const visited = visitedPoints.has(idx);
+        const totalVol = group.wastes.reduce((s, w) => s + w.volume, 0);
+        const isBlinking = (idx === blinkingZoneIndex);
+        heatData.push([group.lat, group.lng, Math.min(totalVol / 20, 1.0)]);
+
+        L.circle([group.lat, group.lng], {
+          radius: DETECTION_RADIUS_METERS,
+          color: visited ? '#7f8c8d' : '#2ecc71',
+          fillColor: visited ? '#7f8c8d' : '#2ecc71',
+          fillOpacity: 0.15,
+          weight: 1.5,
+          interactive: false
+        }).addTo(circlesGroup);
+
+        const centerIcon = L.divIcon({
+          className: '',
+          html: `<div class="${visited ? 'center-dot-visited' : 'center-dot'}"></div>`,
+          iconSize: [12, 12], iconAnchor: [6, 6]
+        });
+        L.marker([group.lat, group.lng], { icon: centerIcon })
+          .bindTooltip(`Zona ${idx + 1} (${totalVol.toFixed(1)} m³)`, { sticky: true })
+          .addTo(dumpsGroup);
+
+        group.items.forEach(point => {
+          const baseCls = visited ? 'dump-triangle-visited' : 'dump-triangle';
+          const blinkCls = isBlinking ? ' dump-triangle-active' : '';
+          const icon = L.divIcon({
+            className: '',
+            html: `<div class="${baseCls}${blinkCls}"></div>`,
+            iconSize: [12, 11], iconAnchor: [6, 6]
+          });
+          L.marker([point.lat, point.lng], { icon })
+            .bindTooltip(`${point.name || ('Vertido ' + point.id)}`, { sticky: true })
+            .addTo(dumpsGroup);
+        });
+      });
+
+      if (!map.hasLayer(circlesGroup)) circlesGroup.addTo(map);
+      if (!map.hasLayer(dumpsGroup)) dumpsGroup.addTo(map);
+      if (!map.hasLayer(spursGroup)) spursGroup.addTo(map);
+
+      if (heatLayer) map.removeLayer(heatLayer);
+      heatLayer = L.heatLayer(heatData, { radius: 35, blur: 20, maxZoom: 17 });
+      if (isHeatmapActive) heatLayer.addTo(map);
+    }
+
+    function renderWasteDetail(group) {
+      const total = group.wastes.reduce((s, w) => s + w.volume, 0);
+      if (total === 0) {
+        document.getElementById('wasteDetailContainer').innerHTML = '<div class="waste-detail">Sin registros de volumen.</div>';
+        return;
+      }
+      let cum = 0;
+      const stops = [];
+      let legend = '<div class="pie-legend">';
+      group.wastes.forEach(w => {
+        const pct = (w.volume / total) * 100;
+        const s = cum; cum += pct;
+        stops.push(`${w.color} ${s}% ${Math.max(s, cum - 0.5)}%`);
+        stops.push(`#0d161d ${Math.max(s, cum - 0.5)}% ${cum}%`);
+        const isD = DANGEROUS_WASTES.some(d => w.type.toLowerCase().includes(d));
+        const badge = isD ? ' <i class="fas fa-exclamation-triangle danger-badge-icon" title="Residuo Peligroso"></i>' : '';
+        legend += `<div class="waste-detail-item">
+          <span class="waste-name"><span class="waste-color-dot" style="background:${w.color}"></span>${w.type}${badge}</span>
+          <span class="waste-value">${w.volume.toFixed(1)} m³</span>
+        </div>`;
+      });
+      legend += '</div>';
+      document.getElementById('wasteDetailContainer').innerHTML = `
+        <div class="waste-detail">
+          <div class="pie-chart-container">
+            <div class="pie-chart-wrapper">
+              <div class="pie-chart" style="background: conic-gradient(${stops.join(', ')});"></div>
+            </div>
+            ${legend}
+          </div>
+          <div class="total-vol"><i class="fas fa-boxes-stacked"></i> Total Zona: <strong>${total.toFixed(1)} m³</strong></div>
+        </div>`;
+    }
+
+    function renderPointsList() {
+      const c = document.getElementById('pointsListContainer');
+      c.innerHTML = '';
+      INSPECTIONPOINTS.forEach((group, idx) => {
+        const total = group.wastes.reduce((s, w) => s + w.volume, 0);
+        const isH = hasHazardousWaste(group);
+        const hazIcon = isH ? ' <i class="fas fa-exclamation-triangle" style="color:#e74c3c"></i>' : '';
+        const count = group.items.length;
+        const div = document.createElement('div');
+        div.className = `point-item ${visitedPoints.has(idx) ? 'visited' : ''}`;
+        div.innerHTML = `<div class="point-name-list"><span>Zona ${idx + 1} (${count} vert.)${hazIcon}</span><span class="point-total">${total.toFixed(1)} m³</span></div><div class="point-sub">[${group.lat.toFixed(4)}, ${group.lng.toFixed(4)}]</div>`;
+        div.addEventListener('click', () => map.flyTo([group.lat, group.lng], 16, { duration: 1.2 }));
+        c.appendChild(div);
+      });
+    }
+
+    function initTrail() {
+      if (trailOutline) { map.removeLayer(trailOutline); trailOutline = null; }
+      if (trailHalo) { map.removeLayer(trailHalo); trailHalo = null; }
+      if (trailCore) { map.removeLayer(trailCore); trailCore = null; }
+
+      trailOutline = L.polyline(traveledCoords, { color: TRAIL_COLOR_OUTLINE, weight: 10, opacity: 0.85, interactive: false, lineCap: 'round', lineJoin: 'round' }).addTo(map);
+      trailHalo = L.polyline(traveledCoords, { color: TRAIL_COLOR_HALO, weight: 7, opacity: 0.9, interactive: false, lineCap: 'round', lineJoin: 'round' }).addTo(map);
+      trailCore = L.polyline(traveledCoords, { color: TRAIL_COLOR_MAIN, weight: 4, opacity: 1.0, interactive: false, lineCap: 'round', lineJoin: 'round' }).addTo(map);
+    }
+
+    function updateTrail() {
+      if (!trailOutline || !trailHalo || !trailCore) return;
+      trailOutline.setLatLngs(traveledCoords);
+      trailHalo.setLatLngs(traveledCoords);
+      trailCore.setLatLngs(traveledCoords);
+    }
+
+    function clearTrail() {
+      traveledCoords = [];
+      if (trailOutline) trailOutline.setLatLngs(traveledCoords);
+      if (trailHalo) trailHalo.setLatLngs(traveledCoords);
+      if (trailCore) trailCore.setLatLngs(traveledCoords);
+    }
+
+    function pushTrailPoint(latlng, force) {
+      if (!trailCore) return;
+      if (traveledCoords.length === 0) {
+        traveledCoords.push(latlng);
+        updateTrail();
+        return;
+      }
+      const last = traveledCoords[traveledCoords.length - 1];
+      if (force || last.distanceTo(latlng) >= TRAIL_STEP_M) {
+        traveledCoords.push(latlng);
+        updateTrail();
+      }
+    }
+
+    function initMap() {
+      activeBaseLayer = baseLayers.esri;
+      map = L.map('map', {
+        zoomControl: false,
+        preferCanvas: true,
+        renderer: L.canvas({ padding: 0.5 }),
+        attributionControl: true
+      });
+      activeBaseLayer.addTo(map);
+
+      L.control.zoom({ position: 'topright' }).addTo(map);
+      L.control.scale({ position: 'bottomleft', metric: true, imperial: false, maxWidth: 130 }).addTo(map);
+      map.attributionControl.setPosition('bottomright');
+
+      drawMapElements();
+      renderPointsList();
+      updateGlobalProgress();
+      updateExecutiveSummary();
+
+      const bounds = L.latLngBounds(RAW_POINTS.map(p => [p.lat, p.lng]));
+      map.fitBounds(bounds, { padding: [40, 40] });
+
+      const firstGroup = INSPECTIONPOINTS[0];
+      const carIcon = L.divIcon({
+        className: '',
+        html: `<div class="environmental-car-icon">
+                 <div class="car-sedan-body" id="carIconElement">
+                   <div class="car-led-lights"><span></span><span></span></div>
+                   <div class="car-sedan-hood"></div>
+                   <div class="car-cabin">
+                     <div class="car-windshield"></div>
+                     <div class="car-siren"></div>
+                     <div class="car-rear-window"></div>
+                   </div>
+                   <div class="car-rear-lights"><span></span><span></span></div>
+                 </div>
+               </div>`,
+        iconSize: [18, 18],
+        iconAnchor: [9, 9]
+      });
+      vehicleMarker = L.marker([firstGroup.lat, firstGroup.lng], { icon: carIcon }).addTo(map);
+
+      currentCarHeading = 0;
+      targetCarHeading = 0;
+      applyCarRotation(0);
+
+      traveledCoords = [vehicleMarker.getLatLng()];
+      initTrail();
+      initAudioDragAndDrop();
+      startAutoSequence();
+    }
+
+    function startAutoSequence() {
+      setStateText('🔍 Vista general de la zona (3s)');
+      setTimeout(() => {
+        setStateText('🔍 Acercando hacia la Zona 1...');
+        const f = INSPECTIONPOINTS[0];
+        map.flyTo([f.lat, f.lng], 16, { duration: 2.5 });
+        let started = false;
+        const safeStart = () => { if (started) return; started = true; startRoute(); };
+        map.once('moveend', safeStart);
+        setTimeout(safeStart, 3200);
+      }, 3000);
+    }
+
+    function initAudioDragAndDrop() {
+      const mapContainer = document.getElementById('mapContainer');
+      const dragOverlay = document.getElementById('dragOverlay');
+      const audioPlayerContainer = document.getElementById('audioPlayerContainer');
+      const audioElement = document.getElementById('audioElement');
+      const audioFileName = document.getElementById('audioFileName');
+      const closeAudioBtn = document.getElementById('closeAudioBtn');
+
+      ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(ev =>
+        mapContainer.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); }, false)
+      );
+      ['dragenter', 'dragover'].forEach(ev =>
+        mapContainer.addEventListener(ev, () => {
+          mapContainer.classList.add('drag-over');
+          dragOverlay.style.display = 'flex';
+        }, false)
+      );
+      ['dragleave', 'drop'].forEach(ev =>
+        mapContainer.addEventListener(ev, () => {
+          mapContainer.classList.remove('drag-over');
+          dragOverlay.style.display = 'none';
+        }, false)
+      );
+
+      mapContainer.addEventListener('drop', e => {
+        const files = e.dataTransfer.files;
+        if (!files.length) return;
+        const file = files[0];
+        if (file.type.startsWith('audio/') || file.name.match(/\.(mp3|wav|ogg|m4a)$/i)) {
+          audioElement.src = URL.createObjectURL(file);
+          audioFileName.innerHTML = `<i class="fas fa-music"></i> ${file.name}`;
+          audioPlayerContainer.style.display = 'flex';
+          audioElement.play().catch(() => {});
+        } else {
+          showToast('Formato de audio no válido (.mp3, .wav, .ogg, .m4a)', 'error');
+        }
+      }, false);
+
+      closeAudioBtn.onclick = () => {
+        audioElement.pause();
+        audioElement.src = '';
+        audioPlayerContainer.style.display = 'none';
+      };
+    }
+
+    function findNearestOnRoute(routeCoords, targetLatLng) {
+      let best = { idx: 0, point: routeCoords[0], dist: Infinity };
+      for (let i = 0; i < routeCoords.length; i++) {
+        const d = routeCoords[i].distanceTo(targetLatLng);
+        if (d < best.dist) best = { idx: i, point: routeCoords[i], dist: d };
+      }
+      return best;
+    }
+
+    function createSpur(fromLatLng, toLatLng) {
+      const dist = fromLatLng.distanceTo(toLatLng);
+      const parts = Math.max(2, Math.min(60, Math.round(dist / INTERPOLATION_MAX_SEGMENT_M)));
+      const spur = [];
+      for (let k = 1; k <= parts; k++) {
+        const t = k / parts;
+        spur.push(L.latLng(
+          fromLatLng.lat + (toLatLng.lat - fromLatLng.lat) * t,
+          fromLatLng.lng + (toLatLng.lng - fromLatLng.lng) * t
+        ));
+      }
+      return spur;
+    }
+
+    function detectVirtualAccesses(routeCoords) {
+      virtualAccessZones.clear();
+      const inserts = [];
+      INSPECTIONPOINTS.forEach((group, zoneIdx) => {
+        const center = L.latLng(group.lat, group.lng);
+        const nearest = findNearestOnRoute(routeCoords, center);
+        if (nearest.dist <= 15) return;
+        if (nearest.dist > MAX_SPUR_LENGTH_M) return;
+        virtualAccessZones.add(zoneIdx);
+        const spur = createSpur(nearest.point, center);
+        inserts.push({ zoneIdx, routeInsertIdx: nearest.idx, spurCoords: spur });
+      });
+      return inserts;
+    }
+
+    function drawRoute(coords, spurs) {
+      if (routeLine) map.removeLayer(routeLine);
+      routeLine = L.polyline(coords, { color: '#2ecc71', weight: 4, opacity: 0.85, interactive: false }).addTo(map);
+      spursGroup.clearLayers();
+      (spurs || []).forEach(spur => {
+        L.polyline(spur.coords, { color: '#e67e22', weight: 3, opacity: 0.85, dashArray: '6,6' }).addTo(spursGroup);
+      });
+      if (!map.hasLayer(spursGroup)) spursGroup.addTo(map);
+    }
+
+    function densifyRoute(coords) {
+      const outCoords = [coords[0]];
+      const outMeta = [];
+      for (let i = 0; i < coords.length - 1; i++) {
+        const a = coords[i];
+        const b = coords[i + 1];
+        const segLen = a.distanceTo(b);
+        if (segLen < 0.01) continue;
+        if (segLen > INTERPOLATION_MAX_SEGMENT_M && segLen > 1) {
+          const parts = Math.min(80, Math.max(2, Math.round(segLen / INTERPOLATION_MAX_SEGMENT_M)));
+          for (let k = 1; k <= parts; k++) {
+            const t = k / parts;
+            const p = L.latLng(a.lat + (b.lat - a.lat) * t, a.lng + (b.lng - a.lng) * t);
+            outCoords.push(p);
+            outMeta.push({ length: outCoords[outCoords.length - 2].distanceTo(p) });
+          }
+        } else {
+          outCoords.push(b);
+          outMeta.push({ length: segLen });
+        }
+      }
+      return { coords: outCoords, meta: outMeta };
+    }
+
+    function insertSpursInRoute(routeCoords, inserts) {
+      inserts.sort((a, b) => b.routeInsertIdx - a.routeInsertIdx);
+      let finalCoords = [...routeCoords];
+      inserts.forEach(insert => {
+        const { routeInsertIdx, spurCoords } = insert;
+        const spurOneWay = [...spurCoords];
+        const spurReturn = [...spurCoords].reverse().slice(1);
+        finalCoords.splice(routeInsertIdx + 1, 0, ...[...spurOneWay, ...spurReturn]);
+      });
+      return finalCoords;
+    }
+
+    /* ============================================================
+       CÁLCULO DE RUTA CON GRAPHHOPPER (evitando autopistas)
+       ============================================================ */
+    async function calculateFullRoute() {
+      setStateText('Calculando trayecto con GraphHopper (evitando AP-7)...');
+      let fullCoords = null;
+
+      // Cargar desde caché
+      try {
+        const cached = localStorage.getItem(ROUTE_CACHE_KEY);
+        if (cached) {
+          const arr = JSON.parse(cached);
+          if (Array.isArray(arr) && arr.length > 1) fullCoords = arr.map(c => L.latLng(c[0], c[1]));
+        }
+      } catch (e) {}
+
+      if (!fullCoords) {
+        // Construir petición GraphHopper
+        const pointsArray = INSPECTIONPOINTS.map(p => [p.lng, p.lat]);
+
+        const requestBody = {
+          points: pointsArray,
+          profile: "car",
+          locale: "es",
+          instructions: false,
+          calc_points: true,
+          points_encoded: false,
+          custom_model: {
+            priority: [
+              { if: "road_class == MOTORWAY", multiply_by: "0" }
+            ]
+          },
+          ch.disable: true
+        };
+
+        try {
+          const res = await fetch(`${GRAPHHOPPER_URL}?key=${GRAPHHOPPER_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+          });
+
+          if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(`HTTP ${res.status}: ${errText.substring(0, 200)}`);
+          }
+
+          const data = await res.json();
+
+          if (data.paths && data.paths[0] && data.paths[0].points && data.paths[0].points.coordinates) {
+            fullCoords = data.paths[0].points.coordinates.map(c => L.latLng(c[1], c[0]));
+            showToast(`Ruta calculada con GraphHopper evitando autopistas.`, 'success', 4000);
+            try {
+              localStorage.setItem(ROUTE_CACHE_KEY, JSON.stringify(fullCoords.map(c => [c.lat, c.lng])));
+            } catch (e) {}
+          } else {
+            throw new Error('Respuesta sin coordenadas válidas');
+          }
+        } catch (e) {
+          console.error('GraphHopper falló:', e);
+          showToast(`Error GraphHopper: ${e.message}. Usando conexión directa.`, 'error', 6000);
+          fullCoords = INSPECTIONPOINTS.map(g => L.latLng(g.lat, g.lng));
+        }
+      }
+
+      if (!fullCoords) {
+        fullCoords = INSPECTIONPOINTS.map(g => L.latLng(g.lat, g.lng));
+      }
+
+      const { coords: denseCoords } = densifyRoute(fullCoords);
+      const inserts = detectVirtualAccesses(denseCoords);
+      const finalCoords = insertSpursInRoute(denseCoords, inserts);
+      const { coords: finalDense, meta } = densifyRoute(finalCoords);
+      routeCoordinates = finalDense;
+      segmentMeta = meta;
+
+      const spurDrawData = inserts.map(ins => ({
+        zoneIdx: ins.zoneIdx,
+        coords: [ins.spurCoords[0], L.latLng(INSPECTIONPOINTS[ins.zoneIdx].lat, INSPECTIONPOINTS[ins.zoneIdx].lng)]
+      }));
+
+      drawRoute(finalDense, spurDrawData);
+      return routeCoordinates;
+    }
+
+    function triggerTechnicalStop(groupIndex) {
+      isStoppedAtPoint = true;
+      if (moveRAF) cancelAnimationFrame(moveRAF);
+      moveRAF = null;
+      updateSpeedUI(0);
+
+      const group = INSPECTIONPOINTS[groupIndex];
+      visitedPoints.add(groupIndex);
+      blinkingZoneIndex = groupIndex;
+      drawMapElements();
+
+      const card = document.getElementById('pointCard');
+      const isHaz = hasHazardousWaste(group);
+      if (isHaz) {
+        playHazardAlarm();
+        card.classList.add('danger-alert');
+        hazardousZonesDetected++;
+      } else {
+        card.classList.remove('danger-alert');
+      }
+
+      const zoneTotal = group.wastes.reduce((s, w) => s + w.volume, 0);
+      document.getElementById('pointName').innerText = `Zona ${groupIndex + 1}`;
+      renderWasteDetail(group);
+
+      accumulatedTotal += zoneTotal;
+      document.getElementById('accumulatedVolume').innerText = accumulatedTotal.toFixed(1);
+
+      renderPointsList();
+      updateGlobalProgress();
+      updateExecutiveSummary();
+      updateRadarDots();
+
+      let spokenText = `Zona ${groupIndex + 1}. ${zoneTotal.toFixed(1)} metros cúbicos.`;
+      if (isHaz) spokenText += ' Atención: contiene residuos peligrosos.';
+      speak(spokenText);
+
+      let remaining = 5;
+      const countdown = document.getElementById('countdownDisplay');
+      const progress = document.getElementById('progressFill');
+      countdown.innerText = remaining;
+      progress.style.width = '0%';
+
+      const alertMsg = isHaz ? ' ⚠️ ¡ALERTA PELIGRO!' : '';
+      setStateText(`🛑 ZONA ${groupIndex + 1}${alertMsg} (${visitedPoints.size}/${INSPECTIONPOINTS.length})`);
+
+      if (stopTimerInterval) clearInterval(stopTimerInterval);
+      stopTimerInterval = setInterval(() => {
+        if (!isStoppedAtPoint) { clearInterval(stopTimerInterval); stopTimerInterval = null; return; }
+        remaining--;
+        countdown.innerText = remaining;
+        progress.style.width = `${((5 - remaining) / 5) * 100}%`;
+
+        if (remaining <= 0) {
+          clearInterval(stopTimerInterval);
+          stopTimerInterval = null;
+          isStoppedAtPoint = false;
+          card.classList.remove('danger-alert');
+
+          if (visitedPoints.size >= INSPECTIONPOINTS.length) {
+            isAnimating = false;
+            setStateText('✅ Inspección completa de todas las zonas finalizada.');
+            updateSpeedUI(0);
+            updateRadarDots();
+            blinkingZoneIndex = -1;
+            drawMapElements();
+            speak('Inspección completada. Todas las zonas han sido verificadas.');
+            return;
+          }
+          setStateText('▶️ Reanudando ruta hacia la siguiente zona');
+          startMoving();
+        }
+      }, 1000);
+    }
+
+    function nextUnvisitedIndex() {
+      for (let i = 0; i < INSPECTIONPOINTS.length; i++) {
+        if (!visitedPoints.has(i)) return i;
+      }
+      return -1;
+    }
+
+    function calculateTargetSpeed(currentPos, segIdx) {
+      const nextIdx = nextUnvisitedIndex();
+      if (nextIdx === -1) return SPEED_MIN_CRUISE;
+      const target = L.latLng(INSPECTIONPOINTS[nextIdx].lat, INSPECTIONPOINTS[nextIdx].lng);
+      const dist = currentPos.distanceTo(target);
+
+      if (dist <= DECELERATION_START_M) {
+        const factor = Math.max(0, dist / DECELERATION_START_M);
+        return SPEED_ARRIVAL + (SPEED_MIN_CRUISE - SPEED_ARRIVAL) * Math.pow(factor, 0.7);
+      }
+      if (dist <= LONG_HAUL_DISTANCE_MIN) return SPEED_MIN_CRUISE;
+      if (dist >= LONG_HAUL_DISTANCE_MAX) return SPEED_MAX_HIGHWAY;
+      const t = (dist - LONG_HAUL_DISTANCE_MIN) / (LONG_HAUL_DISTANCE_MAX - LONG_HAUL_DISTANCE_MIN);
+      return SPEED_MIN_CRUISE + (SPEED_MAX_HIGHWAY - SPEED_MIN_CRUISE) * t;
+    }
+
+    function startMoving() {
+      if (moveRAF) cancelAnimationFrame(moveRAF);
+      let lastTimestamp = null;
+
+      function animate(timestamp) {
+        if (!isAnimating || isStoppedAtPoint) return;
+        if (!lastTimestamp) lastTimestamp = timestamp;
+        let dt = Math.min(60, timestamp - lastTimestamp) / 1000;
+        lastTimestamp = timestamp;
+        if (dt <= 0) { moveRAF = requestAnimationFrame(animate); return; }
+
+        const currentPos = vehicleMarker.getLatLng();
+        const targetPos = routeCoordinates[currentRouteIndex + 1];
+
+        if (!targetPos || visitedPoints.size >= INSPECTIONPOINTS.length) {
+          setStateText('✅ Finalizado: Inspección completa');
+          isAnimating = false;
+          updateSpeedUI(0);
+          updateRadarDots();
+          return;
+        }
+
+        const distanceToTarget = currentPos.distanceTo(targetPos);
+        if (distanceToTarget < 0.1) {
+          currentRouteIndex++;
+          moveRAF = requestAnimationFrame(animate);
+          return;
+        }
+
+        targetCarHeading = calculateBearing(currentPos.lat, currentPos.lng, targetPos.lat, targetPos.lng);
+        if (!isNaN(targetCarHeading)) {
+          currentCarHeading = lerpAngle(currentCarHeading, targetCarHeading, CAR_TURN_RATE_DEG_S * dt);
+          applyCarRotation(currentCarHeading);
+        }
+
+        const targetSpeed = calculateTargetSpeed(currentPos, currentRouteIndex);
+        const speedDiff = targetSpeed - currentSpeed;
+        const newSpeed = currentSpeed + Math.sign(speedDiff) * Math.min(Math.abs(speedDiff), (speedDiff > 0 ? ACCEL_RATE : DECEL_RATE) * dt);
+        updateSpeedUI(newSpeed);
+
+        let stepMeters = METERS_PER_SPEED_UNIT * newSpeed * dt;
+        const nextIdxGlobal = nextUnvisitedIndex();
+        if (nextIdxGlobal !== -1) {
+          const nextZonePos = L.latLng(INSPECTIONPOINTS[nextIdxGlobal].lat, INSPECTIONPOINTS[nextIdxGlobal].lng);
+          stepMeters *= getTimeCompression(currentPos.distanceTo(nextZonePos));
+        }
+
+        if (nextIdxGlobal !== -1) {
+          const centerLatLng = L.latLng(INSPECTIONPOINTS[nextIdxGlobal].lat, INSPECTIONPOINTS[nextIdxGlobal].lng);
+          const dCenter = currentPos.distanceTo(centerLatLng);
+          if (dCenter <= Math.min(20, Math.max(10, stepMeters))) {
+            totalDistanceMeters += dCenter;
+            updateDistanceUI(totalDistanceMeters);
+            vehicleMarker.setLatLng(centerLatLng);
+            pushTrailPoint(centerLatLng, true);
+            triggerTechnicalStop(nextIdxGlobal);
+            return;
+          }
+        }
+
+        if (stepMeters >= distanceToTarget) {
+          totalDistanceMeters += distanceToTarget;
+          vehicleMarker.setLatLng(targetPos);
+          currentRouteIndex++;
+        } else {
+          const ratio = stepMeters / distanceToTarget;
+          const newPos = L.latLng(currentPos.lat + (targetPos.lat - currentPos.lat) * ratio, currentPos.lng + (targetPos.lng - currentPos.lng) * ratio);
+          totalDistanceMeters += currentPos.distanceTo(newPos);
+          vehicleMarker.setLatLng(newPos);
+        }
+
+        pushTrailPoint(vehicleMarker.getLatLng(), false);
+        updateDistanceUI(totalDistanceMeters);
+        updateRadarDots();
+
+        if (blinkingZoneIndex !== -1) {
+          const activeCenter = L.latLng(INSPECTIONPOINTS[blinkingZoneIndex].lat, INSPECTIONPOINTS[blinkingZoneIndex].lng);
+          if (vehicleMarker.getLatLng().distanceTo(activeCenter) > BLINK_CLEAR_DISTANCE_M) {
+            blinkingZoneIndex = -1;
+            drawMapElements();
+          }
+        }
+
+        if (map.getCenter().distanceTo(vehicleMarker.getLatLng()) > 180) {
+          map.panTo(vehicleMarker.getLatLng(), { animate: true, duration: 0.6 });
+        }
+
+        moveRAF = requestAnimationFrame(animate);
+      }
+      moveRAF = requestAnimationFrame(animate);
+    }
+
+    async function startRoute() {
+      if (isAnimating) return;
+      initAudioContext();
+
+      visitedPoints.clear();
+      virtualAccessZones.clear();
+      accumulatedTotal = 0;
+      totalDistanceMeters = 0;
+      currentRouteIndex = 0;
+      blinkingZoneIndex = -1;
+      hazardousZonesDetected = 0;
+
+      updateSpeedUI(0);
+      updateDistanceUI(0);
+      updateGlobalProgress();
+      updateExecutiveSummary();
+      updateRadarDots();
+
+      try {
+        await calculateFullRoute();
+      } catch (err) {
+        showDebug('Error en calculateFullRoute: ' + err.message);
+        routeCoordinates = INSPECTIONPOINTS.map(g => L.latLng(g.lat, g.lng));
+      }
+
+      vehicleMarker.setLatLng([INSPECTIONPOINTS[0].lat, INSPECTIONPOINTS[0].lng]);
+      currentCarHeading = 0;
+      targetCarHeading = 0;
+      applyCarRotation(0);
+
+      clearTrail();
+      pushTrailPoint(vehicleMarker.getLatLng(), true);
+
+      isAnimating = true;
+      isStoppedAtPoint = false;
+      drawMapElements();
+      renderPointsList();
+      triggerTechnicalStop(0);
+    }
+
+    function downloadFile(content, fileName, contentType) {
+      const a = document.createElement('a');
+      const file = new Blob([content], { type: contentType });
+      a.href = URL.createObjectURL(file);
+      a.download = fileName;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    function exportToKML() {
+      let kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Inspección de Residuos - Comarca</name>
+    <Style id="dumpStyle"><IconStyle><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href></Icon></IconStyle></Style>`;
+      INSPECTIONPOINTS.forEach((group, idx) => {
+        const randomImg = SAMPLE_IMAGES[idx % SAMPLE_IMAGES.length];
+        const wasteListHtml = group.wastes.map(w => `<li><b>${w.type}:</b> ${w.volume.toFixed(1)} m³</li>`).join('');
+        kml += `<Placemark><name>Zona ${idx + 1}</name><styleUrl>#dumpStyle</styleUrl><description><![CDATA[<h3>Zona de Inspección ${idx + 1}</h3><ul>${wasteListHtml}</ul><img src="${randomImg}" style="width:100%; border-radius:6px;"/>]]></description><Point><coordinates>${group.lng},${group.lat},0</coordinates></Point></Placemark>`;
+      });
+      kml += `</Document></kml>`;
+      downloadFile(kml, 'Inspeccion_Residuos.kml', 'application/vnd.google-earth.kml+xml');
+    }
+
+    function exportToGeoJSON() {
+      const features = INSPECTIONPOINTS.map((group, idx) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [group.lng, group.lat] },
+        properties: { id: idx + 1, total_volume_m3: group.wastes.reduce((s, w) => s + w.volume, 0), is_hazardous: hasHazardousWaste(group) }
+      }));
+      downloadFile(JSON.stringify({ type: 'FeatureCollection', features }, null, 2), 'Inspeccion_Residuos.geojson', 'application/json');
+    }
+
+    function exportToCSV() {
+      let csv = 'Zona,Latitud,Longitud,Volumen_Total_m3,Es_Peligroso,N_Vertidos\n';
+      INSPECTIONPOINTS.forEach((group, idx) => {
+        csv += `${idx + 1},${group.lat},${group.lng},${group.wastes.reduce((s, w) => s + w.volume, 0)},${hasHazardousWaste(group) ? 'SI' : 'NO'},${group.items.length}\n`;
+      });
+      downloadFile(csv, 'Inspeccion_Residuos.csv', 'text/csv');
+    }
+
+    document.getElementById('pauseBtn').onclick = () => {
+      if (isStoppedAtPoint) return;
+      isAnimating = !isAnimating;
+      const btn = document.getElementById('pauseBtn');
+      if (isAnimating) { btn.innerHTML = '<i class="fas fa-pause"></i> Pausar'; startMoving(); }
+      else { btn.innerHTML = '<i class="fas fa-play"></i> Reanudar'; if (moveRAF) cancelAnimationFrame(moveRAF); moveRAF = null; setStateText('⏸️ Inspección pausada'); }
+    };
+
+    document.getElementById('stopBtn').onclick = () => {
+      if (confirm('¿Reiniciar la simulación?')) location.reload();
+    };
+
+    document.getElementById('toggleHeatmapBtn').onclick = () => {
+      isHeatmapActive = !isHeatmapActive;
+      const btn = document.getElementById('toggleHeatmapBtn');
+      if (isHeatmapActive) { btn.innerHTML = '<i class="fas fa-fire"></i> Heatmap ON'; btn.style.background = '#e67e22'; if (heatLayer) heatLayer.addTo(map); }
+      else { btn.innerHTML = '<i class="fas fa-fire"></i> Heatmap'; btn.style.background = '#16a085'; if (heatLayer) map.removeLayer(heatLayer); }
+    };
+
+    document.getElementById('exportFormatSelect').onchange = (e) => {
+      const format = e.target.value;
+      if (format === 'kml') exportToKML();
+      else if (format === 'geojson') exportToGeoJSON();
+      else if (format === 'csv') exportToCSV();
+      e.target.value = '';
+    };
+
+    document.getElementById('mapSelector').onchange = (e) => {
+      map.removeLayer(activeBaseLayer);
+      activeBaseLayer = baseLayers[e.target.value];
+      activeBaseLayer.addTo(map);
+    };
+
+    initMap();
+  </script>
+</body>
+</html>
